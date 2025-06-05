@@ -1,0 +1,10 @@
+[package]
+name = "l0ttie"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# https://github.com/LottieFiles/dotlottie-rs/issues/318
+dotlottie-rs = { git = "https://github.com/LottieFiles/dotlottie-rs.git", tag = "v0.1.42", features = [
+    "thorvg-v0",
+] }
