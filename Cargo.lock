@@ -53,7 +53,27 @@ dependencies = [
  "proc-macro2",
  "quote",
  "regex",
- "rustc-hash",
+ "rustc-hash 1.1.0",
+ "shlex",
+ "syn",
+]
+
+[[package]]
+name = "bindgen"
+version = "0.71.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f58bf3d7db68cfbac37cfc485a8d711e87e064c3d0fe0435b92f7a407f9d6b3"
+dependencies = [
+ "bitflags",
+ "cexpr",
+ "clang-sys",
+ "itertools",
+ "log",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash 2.1.1",
  "shlex",
  "syn",
 ]
@@ -148,7 +168,7 @@ version = "0.1.0"
 source = "git+https://github.com/LottieFiles/dotlottie-rs.git?tag=v0.1.42#2ff8b975cbdc32a8ca7d8c15825c90c26829e01d"
 dependencies = [
  "base64",
- "bindgen",
+ "bindgen 0.70.1",
  "conan2",
  "glob",
  "instant",
@@ -192,6 +212,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "frei0r-macros"
+version = "1.0.0"
+source = "git+https://github.com/rectalogic/frei0r-rs.git?tag=1.0.0#c97907231fc5acb83fc3425aa3445d1a10a5acb1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "frei0r-rs"
+version = "1.0.0"
+source = "git+https://github.com/rectalogic/frei0r-rs.git?tag=1.0.0#c97907231fc5acb83fc3425aa3445d1a10a5acb1"
+dependencies = [
+ "frei0r-macros",
+ "frei0r-sys",
+]
+
+[[package]]
+name = "frei0r-sys"
+version = "1.0.0"
+source = "git+https://github.com/rectalogic/frei0r-rs.git?tag=1.0.0#c97907231fc5acb83fc3425aa3445d1a10a5acb1"
+dependencies = [
+ "bindgen 0.71.1",
 ]
 
 [[package]]
@@ -364,6 +411,7 @@ name = "l0ttie"
 version = "0.1.0"
 dependencies = [
  "dotlottie-rs",
+ "frei0r-rs",
 ]
 
 [[package]]
@@ -518,6 +566,12 @@ name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
+
+[[package]]
+name = "rustc-hash"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
 name = "ryu"
