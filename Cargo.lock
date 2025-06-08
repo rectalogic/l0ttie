@@ -86,9 +86,9 @@ checksum = "1b8e56985ec62d17e9c1001dc89c88ecd7dc08e47eba5ec7c29c7b5eeecde967"
 
 [[package]]
 name = "bumpalo"
-version = "3.17.0"
+version = "3.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1628fb46dfa0b37568d12e5edd512553eccf6a22a78e8bde00bb4aed84d5bdbf"
+checksum = "793db76d6187cd04dff33004d8e6c9cc4e05cd330500379d2394209271b4aeee"
 
 [[package]]
 name = "cexpr"
@@ -197,9 +197,9 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "flate2"
-version = "1.1.1"
+version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ced92e76e966ca2fd84c8f7aa01a4aea65b0eb6648d72f7c8f3e2764a67fece"
+checksum = "4a3d7db9596fecd151c5f638c0ee5d5bd487b6e0ea232e5dc96d5250f6f94b1d"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
@@ -216,8 +216,8 @@ dependencies = [
 
 [[package]]
 name = "frei0r-macros"
-version = "1.0.0"
-source = "git+https://github.com/rectalogic/frei0r-rs.git?tag=1.0.0#c97907231fc5acb83fc3425aa3445d1a10a5acb1"
+version = "1.0.1"
+source = "git+https://github.com/rectalogic/frei0r-rs.git?tag=1.0.1#2484571297f63c7a7d8d6dcf18f985fbd10293b6"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -226,8 +226,8 @@ dependencies = [
 
 [[package]]
 name = "frei0r-rs"
-version = "1.0.0"
-source = "git+https://github.com/rectalogic/frei0r-rs.git?tag=1.0.0#c97907231fc5acb83fc3425aa3445d1a10a5acb1"
+version = "1.0.1"
+source = "git+https://github.com/rectalogic/frei0r-rs.git?tag=1.0.1#2484571297f63c7a7d8d6dcf18f985fbd10293b6"
 dependencies = [
  "frei0r-macros",
  "frei0r-sys",
@@ -235,8 +235,8 @@ dependencies = [
 
 [[package]]
 name = "frei0r-sys"
-version = "1.0.0"
-source = "git+https://github.com/rectalogic/frei0r-rs.git?tag=1.0.0#c97907231fc5acb83fc3425aa3445d1a10a5acb1"
+version = "1.0.1"
+source = "git+https://github.com/rectalogic/frei0r-rs.git?tag=1.0.1#2484571297f63c7a7d8d6dcf18f985fbd10293b6"
 dependencies = [
  "bindgen 0.71.1",
 ]
@@ -249,9 +249,9 @@ checksum = "a8d1add55171497b4705a648c6b583acafb01d58050a51727785f0b2c8e0a2b2"
 
 [[package]]
 name = "hashbrown"
-version = "0.15.3"
+version = "0.15.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84b26c544d002229e640969970a2e74021aadf6e2f96372b9c58eff97de08eb3"
+checksum = "5971ac85611da7067dbfcabef3c70ebb5606018acd9e2a3903a0da507521e0d5"
 
 [[package]]
 name = "icu_collections"
@@ -631,9 +631,9 @@ checksum = "d66dc143e6b11c1eddc06d5c423cfc97062865baf299914ab64caa38182078fe"
 
 [[package]]
 name = "smallvec"
-version = "1.15.0"
+version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8917285742e9f3e1683f0a9c4e6b57960b7314d0b08d30d1ecd426713ee2eee9"
+checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "spin"

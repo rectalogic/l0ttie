@@ -12,4 +12,4 @@ crate-type = ["cdylib"]
 dotlottie-rs = { git = "https://github.com/LottieFiles/dotlottie-rs.git", tag = "v0.1.42", features = [
     "thorvg-v0",
 ] }
-frei0r-rs = { git = "https://github.com/rectalogic/frei0r-rs.git", tag = "1.0.0" }
+frei0r-rs = { git = "https://github.com/rectalogic/frei0r-rs.git", tag = "1.0.1" }
