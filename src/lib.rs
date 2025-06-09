@@ -1,14 +1,11 @@
-use dotlottie_rs::{Config, DotLottiePlayer, Fit, Layout, Mode};
-use std::{ffi::CString, slice};
+use dotlottie_rs::{Config, DotLottiePlayer, Fit, Layout};
+use std::{
+    ffi::{CStr, CString},
+    slice,
+};
 
-#[derive(frei0r_rs::PluginBase)]
 pub struct L0ttiePlugin {
-    #[frei0r(explain = c"Lottie animation file path")]
     animation_path: CString,
-    #[frei0r(
-        explain = c"Fit animation to video frame: 'contain' (default), 'fill', 'cover', 'fit-width', 'fit-height', 'none'"
-    )]
-    fit: CString,
     width: usize,
     height: usize,
     player: DotLottiePlayer,
@@ -16,11 +13,42 @@ pub struct L0ttiePlugin {
     initialized: bool,
 }
 
-impl L0ttiePlugin {
+impl frei0r_rs2::Plugin for L0ttiePlugin {
+    type Kind = frei0r_rs2::KindSource;
+
+    const PARAMS: &'static [frei0r_rs2::ParamInfo<Self>] = &[
+        frei0r_rs2::ParamInfo::new_string(
+            c"animation_path",
+            c"Lottie animation file path",
+            |plugin| plugin.animation_path.as_c_str(),
+            |plugin, value| plugin.animation_path = value.to_owned(),
+        ),
+        frei0r_rs2::ParamInfo::new_string(
+            c"fit",
+            c"Fit animation to video frame: 'contain' (default), 'fill', 'cover', 'fit-width', 'fit-height', 'none'",
+            |plugin| fit_to_cstr(plugin.player.config().layout.fit),
+            |plugin, value| {
+                let mut config = plugin.player.config();
+                config.layout.fit = cstr_to_fit(value);
+                plugin.player.set_config(config);
+            }
+        ),
+    ];
+
+    fn info() -> frei0r_rs2::PluginInfo {
+        frei0r_rs2::PluginInfo {
+            name: c"l0ttie",
+            author: c"Andrew Wason",
+            color_model: frei0r_rs2::ColorModel::RGBA8888,
+            major_version: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+            minor_version: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+            explanation: Some(c"Lottie renderer using dotlottie-rs"),
+        }
+    }
+
     fn new(width: usize, height: usize) -> Self {
         Self {
             animation_path: c"".into(),
-            fit: c"contain".into(),
             width,
             height,
             player: DotLottiePlayer::new(Config {
@@ -39,26 +67,7 @@ impl L0ttiePlugin {
     }
 }
 
-impl frei0r_rs::Plugin for L0ttiePlugin {
-    type Kind = frei0r_rs::KindSource;
-
-    fn info() -> frei0r_rs::PluginInfo {
-        frei0r_rs::PluginInfo {
-            name: c"l0ttie",
-            author: c"Andrew Wason",
-            color_model: frei0r_rs::ColorModel::RGBA8888,
-            major_version: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
-            minor_version: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
-            explanation: c"Lottie renderer using dotlottie-rs",
-        }
-    }
-
-    fn new(width: usize, height: usize) -> Self {
-        L0ttiePlugin::new(width, height)
-    }
-}
-
-impl frei0r_rs::SourcePlugin for L0ttiePlugin {
+impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
     fn update_source(&mut self, _time: f64, outframe: &mut [u32]) {
         if !self.initialized {
             self.initialized = true;
@@ -81,16 +90,13 @@ impl frei0r_rs::SourcePlugin for L0ttiePlugin {
                     )
                 };
                 if loaded {
-                    let frame_rate = self.player.total_frames() / self.player.duration();
+                    let _frame_rate = self.player.total_frames() / self.player.duration();
                     // let speed = 30.0; //30.0 / frame_rate;
                     println!(
                         "total_frames {} duration {}",
                         self.player.total_frames(),
                         self.player.duration()
                     );
-                    let mut config = self.player.config();
-                    config.layout = Layout::new(convert_fit(&self.fit), vec![0.5, 0.5]);
-                    self.player.set_config(config);
 
                     //XXX make marker configurable in frei0r params?
                     // if let Some(marker) = self.player.markers().first() {
@@ -121,7 +127,7 @@ impl frei0r_rs::SourcePlugin for L0ttiePlugin {
             outframe.copy_from_slice(frame);
             for pixel in outframe {
                 // Rotate left by 8 bits: ARGB -> RGBA
-                // dotlottie_rs::ColorSpace::ARGB8888 -> frei0r_rs::ColorModel::RGBA8888
+                // dotlottie_rs::ColorSpace::ARGB8888 -> frei0r_rs2::ColorModel::RGBA8888
                 // XXX no rotation seems correct, but it should be 8
                 *pixel = pixel.rotate_left(0);
             }
@@ -131,19 +137,40 @@ impl frei0r_rs::SourcePlugin for L0ttiePlugin {
     }
 }
 
-fn convert_fit(fit: &CString) -> Fit {
-    if let Ok(fit) = fit.to_str() {
-        match fit {
-            "contain" => Fit::Contain,
-            "fill" => Fit::Fill,
-            "cover" => Fit::Cover,
-            "fit-width" => Fit::FitWidth,
-            "fit-height" => Fit::FitHeight,
-            "none" => Fit::None,
-            _ => Fit::Contain,
-        }
+const FIT_CONTAIN: &CStr = c"contain";
+const FIT_FILL: &CStr = c"fill";
+const FIT_COVER: &CStr = c"cover";
+const FIT_WIDTH: &CStr = c"fit-width";
+const FIT_HEIGHT: &CStr = c"fit-height";
+const FIT_NONE: &CStr = c"none";
+
+fn fit_to_cstr(fit: Fit) -> &'static CStr {
+    match fit {
+        Fit::Contain => FIT_CONTAIN,
+        Fit::Fill => FIT_FILL,
+        Fit::Cover => FIT_COVER,
+        Fit::FitWidth => FIT_WIDTH,
+        Fit::FitHeight => FIT_HEIGHT,
+        Fit::None => FIT_NONE,
+    }
+}
+
+fn cstr_to_fit(fit: &CStr) -> Fit {
+    if fit == FIT_CONTAIN {
+        Fit::Contain
+    } else if fit == FIT_FILL {
+        Fit::Fill
+    } else if fit == FIT_COVER {
+        Fit::Cover
+    } else if fit == FIT_WIDTH {
+        Fit::FitWidth
+    } else if fit == FIT_HEIGHT {
+        Fit::FitHeight
+    } else if fit == FIT_NONE {
+        Fit::None
     } else {
         Fit::Contain
     }
 }
-frei0r_rs::plugin!(L0ttiePlugin);
+
+frei0r_rs2::plugin!(L0ttiePlugin);
