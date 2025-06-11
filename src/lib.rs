@@ -8,10 +8,12 @@ use std::{
 
 pub struct L0ttiePlugin {
     animation_path: CString,
+    video_fps: f64,
     width: usize,
     height: usize,
     player: DotLottiePlayer,
     frame: f32,
+    frame_step: f32,
     initialized: bool,
 }
 
@@ -24,6 +26,12 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             c"Lottie animation file path",
             |plugin| plugin.animation_path.as_c_str(),
             |plugin, value| plugin.animation_path = value.to_owned(),
+        ),
+        frei0r_rs2::ParamInfo::new_double(
+            c"video_fps",
+            c"Framerate of the generated video",
+            |plugin| plugin.video_fps,
+            |plugin, value| plugin.video_fps = value,
         ),
         frei0r_rs2::ParamInfo::new_string(
             c"fit",
@@ -51,6 +59,7 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
     fn new(width: usize, height: usize) -> Self {
         Self {
             animation_path: c"".into(),
+            video_fps: 30.0,
             width,
             height,
             player: DotLottiePlayer::new(Config {
@@ -63,6 +72,7 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
                 layout: Layout::new(Fit::Contain, vec![0.5, 0.5]),
                 ..Config::default()
             }),
+            frame_step: 0.0,
             frame: 0.0,
             initialized: false,
         }
@@ -92,20 +102,8 @@ impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
                     )
                 };
                 if loaded {
-                    let _frame_rate = self.player.total_frames() / self.player.duration();
-                    // let speed = 30.0; //30.0 / frame_rate;
-                    println!(
-                        "total_frames {} duration {}",
-                        self.player.total_frames(),
-                        self.player.duration()
-                    );
-
-                    //XXX make marker configurable in frei0r params?
-                    // if let Some(marker) = self.player.markers().first() {
-                    //     let mut config = self.player.config();
-                    //     config.marker = marker.name.clone();
-                    //     self.player.set_config(config);
-                    // }
+                    let player_fps = self.player.total_frames() / self.player.duration();
+                    self.frame_step = player_fps / self.video_fps as f32;
                 } else {
                     eprintln!("Failed to load lottie animation path {animation_path}");
                 }
@@ -120,7 +118,7 @@ impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
         // XXX validate frame is valid. also 0.0 is current but has never been rendered
         self.player.set_frame(self.frame);
         if self.player.render() {
-            self.frame += 1.0;
+            self.frame += self.frame_step;
             // https://github.com/LottieFiles/dotlottie-rs/issues/335
             let frame = unsafe {
                 &slice::from_raw_parts(self.player.buffer(), self.player.buffer_len() as usize)
