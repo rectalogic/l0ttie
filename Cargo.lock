@@ -162,7 +162,7 @@ dependencies = [
 [[package]]
 name = "dotlottie-rs"
 version = "0.1.0"
-source = "git+https://github.com/LottieFiles/dotlottie-rs.git?tag=v0.1.42#f2ddd57e6875fd174f9ba54691ddc6bd38e305c3"
+source = "git+https://github.com/LottieFiles/dotlottie-rs.git?tag=v0.1.43#8f1642a575c09a171176920b5857570b6fac5c50"
 dependencies = [
  "bindgen 0.70.1",
  "conan2",
@@ -220,8 +220,8 @@ dependencies = [
 
 [[package]]
 name = "frei0r-rs2"
-version = "2.0.0"
-source = "git+https://github.com/rectalogic/frei0r-rs.git?tag=2.0.0#895454a77dc55131a5483dbe1bf89dfe214b8e68"
+version = "2.1.0"
+source = "git+https://github.com/rectalogic/frei0r-rs.git?tag=2.1.0#19ec22d2d13678d1826ed0ab30f3e4bd8c2459a3"
 dependencies = [
  "frei0r-sys",
  "paste",

@@ -1,6 +1,5 @@
 // Copyright (C) 2025 Andrew Wason
 // SPDX-License-Identifier: GPL-3.0-or-later
-use dotlottie_rs::{Config, DotLottiePlayer, Fit, Layout};
 use std::{
     ffi::{CStr, CString},
     slice,
@@ -9,37 +8,56 @@ use std::{
 pub struct L0ttiePlugin {
     animation_path: CString,
     video_fps: f64,
+    mode: Mode,
     width: usize,
     height: usize,
-    player: DotLottiePlayer,
-    frame: f32,
+    player: dotlottie_rs::DotLottiePlayer,
+    frame_number: f32,
     frame_step: f32,
+    direction: Direction,
+    loop_animation: bool,
     initialized: bool,
 }
 
 impl frei0r_rs2::Plugin for L0ttiePlugin {
     type Kind = frei0r_rs2::KindSource;
 
-    const PARAMS: &'static [frei0r_rs2::ParamInfo<Self>] = &[
-        frei0r_rs2::ParamInfo::new_string(
+    const PARAMS: &'static [frei0r_rs2::param::ParamInfo<Self>] = &[
+        frei0r_rs2::param::ParamInfo::new_string(
             c"animation_path",
             c"Lottie animation file path",
             |plugin| plugin.animation_path.as_c_str(),
             |plugin, value| plugin.animation_path = value.to_owned(),
         ),
-        frei0r_rs2::ParamInfo::new_double(
+        frei0r_rs2::param::ParamInfo::new_double(
             c"video_fps",
             c"Framerate of the generated video",
             |plugin| plugin.video_fps,
             |plugin, value| plugin.video_fps = value,
         ),
-        frei0r_rs2::ParamInfo::new_string(
+        frei0r_rs2::param::ParamInfo::new_string(
+            c"mode",
+            c"Playback mode: 'forward' (default), 'reverse', 'bounce', 'reverse-bounce'",
+            |plugin| plugin.mode.into(),
+            |plugin, value| {
+                plugin.mode = Mode::from(value);
+            }
+        ),
+        frei0r_rs2::param::ParamInfo::new_bool(
+            c"loop",
+            c"Loop animation",
+            |plugin| plugin.loop_animation,
+            |plugin, value| {
+                plugin.loop_animation = value;
+            }
+        ),
+        frei0r_rs2::param::ParamInfo::new_string(
             c"fit",
             c"Fit animation to video frame: 'contain' (default), 'fill', 'cover', 'fit-width', 'fit-height', 'none'",
-            |plugin| fit_to_cstr(plugin.player.config().layout.fit),
+            |plugin| Fit(plugin.player.config().layout.fit).into(),
             |plugin, value| {
                 let mut config = plugin.player.config();
-                config.layout.fit = cstr_to_fit(value);
+                config.layout.fit = Fit::from(value).0;
                 plugin.player.set_config(config);
             }
         ),
@@ -62,18 +80,16 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             video_fps: 30.0,
             width,
             height,
-            player: DotLottiePlayer::new(Config {
-                //XXX set mode, speed, layout etc
-                // XXX what is segment? start/end times
-                // XXX marker is basically a named segment (start/end)
-                // mode: Mode::Bounce,
+            player: dotlottie_rs::DotLottiePlayer::new(dotlottie_rs::Config {
                 autoplay: true,
-                // loop_animation: true,
-                layout: Layout::new(Fit::Contain, vec![0.5, 0.5]),
-                ..Config::default()
+                layout: dotlottie_rs::Layout::new(dotlottie_rs::Fit::Contain, vec![0.5, 0.5]),
+                ..dotlottie_rs::Config::default()
             }),
             frame_step: 0.0,
-            frame: 0.0,
+            frame_number: 0.0,
+            mode: Mode::Forward,
+            direction: Direction::Forward,
+            loop_animation: false,
             initialized: false,
         }
     }
@@ -115,61 +131,200 @@ impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
             return;
         }
 
-        // XXX validate frame is valid. also 0.0 is current but has never been rendered
-        self.player.set_frame(self.frame);
-        if self.player.render() {
-            self.frame += self.frame_step;
-            // https://github.com/LottieFiles/dotlottie-rs/issues/335
-            let frame = unsafe {
-                &slice::from_raw_parts(self.player.buffer(), self.player.buffer_len() as usize)
-                    [0..(self.width * self.height)]
-            };
-            outframe.copy_from_slice(frame);
-            for pixel in outframe {
-                // Rotate left by 8 bits: ARGB -> RGBA
-                // dotlottie_rs::ColorSpace::ARGB8888 -> frei0r_rs2::ColorModel::RGBA8888
-                // XXX no rotation seems correct, but it should be 8
-                *pixel = pixel.rotate_left(0);
-            }
-        } else {
-            println!("RENDER FAILED {}", self.frame);
+        self.player.set_frame(self.frame_number);
+        if !self.player.render() {
+            println!("l0ttie render failed frame {}", self.frame_number);
+            return;
+        }
+
+        (self.frame_number, self.direction) = self.mode.next_frame(
+            self.frame_number,
+            self.frame_step,
+            self.direction,
+            0.0,
+            self.player.total_frames(),
+            self.loop_animation,
+        );
+
+        let frame = unsafe {
+            &slice::from_raw_parts(self.player.buffer(), self.player.buffer_len() as usize)
+                [0..(self.width * self.height)]
+        };
+        outframe.copy_from_slice(frame);
+        // XXX no rotation seems correct, but it should be 8
+        #[cfg(any())]
+        for pixel in outframe {
+            // Rotate left by 8 bits: ARGB -> RGBA
+            // dotlottie_rs::ColorSpace::ARGB8888 -> frei0r_rs2::ColorModel::RGBA8888
+            *pixel = pixel.rotate_left(8);
         }
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+enum Direction {
+    Forward,
+    Reverse,
+}
+
+#[derive(Copy, Clone, Debug)]
+enum Mode {
+    Forward,
+    Reverse,
+    Bounce,
+    ReverseBounce,
+}
+
+impl Mode {
+    fn next_frame(
+        &self,
+        current_frame: f32,
+        frame_step: f32,
+        direction: Direction,
+        start_frame: f32,
+        end_frame: f32,
+        loop_animation: bool,
+    ) -> (f32, Direction) {
+        let next_frame = match direction {
+            Direction::Forward => current_frame + frame_step,
+            Direction::Reverse => current_frame - frame_step,
+        };
+
+        match self {
+            Mode::Forward => {
+                if next_frame >= end_frame {
+                    if loop_animation {
+                        (start_frame, direction)
+                    } else {
+                        (end_frame, direction)
+                    }
+                } else {
+                    (next_frame, direction)
+                }
+            }
+            Mode::Reverse => {
+                if next_frame <= start_frame {
+                    if loop_animation {
+                        (end_frame, direction)
+                    } else {
+                        (start_frame, direction)
+                    }
+                } else {
+                    (next_frame, direction)
+                }
+            }
+            Mode::Bounce => match direction {
+                Direction::Forward => {
+                    if next_frame >= end_frame {
+                        (end_frame, Direction::Reverse)
+                    } else {
+                        (next_frame, direction)
+                    }
+                }
+                Direction::Reverse => {
+                    if next_frame <= start_frame {
+                        if loop_animation {
+                            (start_frame, Direction::Forward)
+                        } else {
+                            (start_frame, direction)
+                        }
+                    } else {
+                        (next_frame, direction)
+                    }
+                }
+            },
+            Mode::ReverseBounce => match direction {
+                Direction::Reverse => {
+                    if next_frame <= start_frame {
+                        (start_frame, Direction::Forward)
+                    } else {
+                        (next_frame, direction)
+                    }
+                }
+                Direction::Forward => {
+                    if next_frame >= end_frame {
+                        if loop_animation {
+                            (end_frame, Direction::Reverse)
+                        } else {
+                            (end_frame, direction)
+                        }
+                    } else {
+                        (next_frame, direction)
+                    }
+                }
+            },
+        }
+    }
+}
+
+const MODE_FORWARD: &CStr = c"forward";
+const MODE_REVERSE: &CStr = c"reverse";
+const MODE_BOUNCE: &CStr = c"bounce";
+const MODE_REVERSE_BOUNCE: &CStr = c"reverse-bounce";
+impl From<&CStr> for Mode {
+    fn from(value: &CStr) -> Self {
+        if value == MODE_FORWARD {
+            Mode::Forward
+        } else if value == MODE_REVERSE {
+            Mode::Reverse
+        } else if value == MODE_BOUNCE {
+            Mode::Bounce
+        } else if value == MODE_REVERSE_BOUNCE {
+            Mode::ReverseBounce
+        } else {
+            Mode::Forward
+        }
+    }
+}
+impl From<Mode> for &'static CStr {
+    fn from(mode: Mode) -> Self {
+        match mode {
+            Mode::Forward => MODE_FORWARD,
+            Mode::Reverse => MODE_REVERSE,
+            Mode::Bounce => MODE_BOUNCE,
+            Mode::ReverseBounce => MODE_REVERSE_BOUNCE,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct Fit(dotlottie_rs::Fit);
 const FIT_CONTAIN: &CStr = c"contain";
 const FIT_FILL: &CStr = c"fill";
 const FIT_COVER: &CStr = c"cover";
 const FIT_WIDTH: &CStr = c"fit-width";
 const FIT_HEIGHT: &CStr = c"fit-height";
 const FIT_NONE: &CStr = c"none";
-
-fn fit_to_cstr(fit: Fit) -> &'static CStr {
-    match fit {
-        Fit::Contain => FIT_CONTAIN,
-        Fit::Fill => FIT_FILL,
-        Fit::Cover => FIT_COVER,
-        Fit::FitWidth => FIT_WIDTH,
-        Fit::FitHeight => FIT_HEIGHT,
-        Fit::None => FIT_NONE,
+impl From<&CStr> for Fit {
+    fn from(value: &CStr) -> Self {
+        let fit = if value == FIT_CONTAIN {
+            dotlottie_rs::Fit::Contain
+        } else if value == FIT_FILL {
+            dotlottie_rs::Fit::Fill
+        } else if value == FIT_COVER {
+            dotlottie_rs::Fit::Cover
+        } else if value == FIT_WIDTH {
+            dotlottie_rs::Fit::FitWidth
+        } else if value == FIT_HEIGHT {
+            dotlottie_rs::Fit::FitHeight
+        } else if value == FIT_NONE {
+            dotlottie_rs::Fit::None
+        } else {
+            dotlottie_rs::Fit::Contain
+        };
+        Fit(fit)
     }
 }
-
-fn cstr_to_fit(fit: &CStr) -> Fit {
-    if fit == FIT_CONTAIN {
-        Fit::Contain
-    } else if fit == FIT_FILL {
-        Fit::Fill
-    } else if fit == FIT_COVER {
-        Fit::Cover
-    } else if fit == FIT_WIDTH {
-        Fit::FitWidth
-    } else if fit == FIT_HEIGHT {
-        Fit::FitHeight
-    } else if fit == FIT_NONE {
-        Fit::None
-    } else {
-        Fit::Contain
+impl From<Fit> for &'static CStr {
+    fn from(fit: Fit) -> Self {
+        match fit.0 {
+            dotlottie_rs::Fit::Contain => FIT_CONTAIN,
+            dotlottie_rs::Fit::Fill => FIT_FILL,
+            dotlottie_rs::Fit::Cover => FIT_COVER,
+            dotlottie_rs::Fit::FitWidth => FIT_WIDTH,
+            dotlottie_rs::Fit::FitHeight => FIT_HEIGHT,
+            dotlottie_rs::Fit::None => FIT_NONE,
+        }
     }
 }
 
