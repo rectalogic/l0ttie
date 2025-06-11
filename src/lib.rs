@@ -1,3 +1,5 @@
+// Copyright (C) 2025 Andrew Wason
+// SPDX-License-Identifier: GPL-3.0-or-later
 use dotlottie_rs::{Config, DotLottiePlayer, Fit, Layout};
 use std::{
     ffi::{CStr, CString},
