@@ -16,6 +16,7 @@ pub struct L0ttiePlugin {
     renderer: dotlottie_rs::TvgRenderer,
     animation: dotlottie_rs::TvgAnimation,
     layout: dotlottie_rs::Layout,
+    recompute_layout: bool,
     frame_number: f32,
     frame_step: f32,
     direction: Direction,
@@ -61,13 +62,8 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             c"Fit animation to video frame: 'contain' (default), 'fill', 'cover', 'fit-width', 'fit-height', 'none'",
             |plugin| Fit(plugin.layout.fit).into(),
             |plugin, value| {
-                let fit = Fit::from(value).0;
-                if fit == plugin.layout.fit {
-                    return;
-                }
-                if let Err(err) = plugin.compute_fit(fit) {
-                    eprintln!("Failed to compute fit: {:?}", err);
-                }
+                plugin.layout.fit = Fit::from(value).0;
+                plugin.recompute_layout = true;
             }
         ),
     ];
@@ -84,7 +80,7 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
     }
 
     fn new(width: usize, height: usize) -> Self {
-        let mut this = Self {
+        Self {
             animation_path: c"".into(),
             video_fps: 30.0,
             width,
@@ -92,6 +88,7 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             renderer: dotlottie_rs::TvgRenderer::new(dotlottie_rs::TvgEngine::TvgEngineSw, 0),
             animation: dotlottie_rs::TvgAnimation::default(),
             layout: dotlottie_rs::Layout::new(dotlottie_rs::Fit::Contain, vec![0.5, 0.5]),
+            recompute_layout: true,
             frame_step: 0.0,
             frame_number: 0.0,
             mode: Mode::Forward,
@@ -99,11 +96,7 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             loop_animation: false,
             initialized: false,
             loaded: false,
-        };
-        if let Err(err) = this.compute_fit(dotlottie_rs::Fit::Contain) {
-            eprintln!("Failed to compute fit: {:?}", err);
         }
-        this
     }
 }
 
@@ -154,7 +147,7 @@ impl L0ttiePlugin {
         Ok(())
     }
 
-    fn compute_fit(&mut self, fit: dotlottie_rs::Fit) -> Result<(), TvgError> {
+    fn compute_layout(&mut self) -> Result<(), TvgError> {
         let (animation_width, animation_height) = self.animation.get_size()?;
         let (sx, sy, tx, ty) = self.layout.compute_layout_transform(
             self.width as f32,
@@ -164,7 +157,6 @@ impl L0ttiePlugin {
         );
         self.animation.set_size(sx, sy)?;
         self.animation.translate(tx, ty)?;
-        self.layout.fit = fit;
         Ok(())
     }
 
@@ -178,6 +170,15 @@ impl L0ttiePlugin {
             self.height as u32,
             ColorSpace::ARGB8888,
         )?;
+
+        if self.recompute_layout {
+            if let Err(err) = self.compute_layout() {
+                eprintln!("Failed to compute layout: {:?}", err);
+            } else {
+                self.recompute_layout = false;
+            }
+        }
+
         // Ignore errors, fails if we set the same frame
         let _ = self.animation.set_frame(self.frame_number);
         self.renderer.update()?;
