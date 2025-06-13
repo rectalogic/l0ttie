@@ -1,9 +1,11 @@
 // Copyright (C) 2025 Andrew Wason
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::{
+    error::Error,
     ffi::{CStr, CString},
-    slice,
 };
+
+use dotlottie_rs::{Animation, ColorSpace, Drawable, Renderer, TvgError};
 
 pub struct L0ttiePlugin {
     animation_path: CString,
@@ -11,12 +13,15 @@ pub struct L0ttiePlugin {
     mode: Mode,
     width: usize,
     height: usize,
-    player: dotlottie_rs::DotLottiePlayer,
+    renderer: dotlottie_rs::TvgRenderer,
+    animation: dotlottie_rs::TvgAnimation,
+    layout: dotlottie_rs::Layout,
     frame_number: f32,
     frame_step: f32,
     direction: Direction,
     loop_animation: bool,
     initialized: bool,
+    loaded: bool,
 }
 
 impl frei0r_rs2::Plugin for L0ttiePlugin {
@@ -54,11 +59,9 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
         frei0r_rs2::param::ParamInfo::new_string(
             c"fit",
             c"Fit animation to video frame: 'contain' (default), 'fill', 'cover', 'fit-width', 'fit-height', 'none'",
-            |plugin| Fit(plugin.player.config().layout.fit).into(),
+            |plugin| Fit(plugin.layout.fit).into(),
             |plugin, value| {
-                let mut config = plugin.player.config();
-                config.layout.fit = Fit::from(value).0;
-                plugin.player.set_config(config);
+                plugin.layout.fit = Fit::from(value).0;
             }
         ),
     ];
@@ -80,17 +83,16 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             video_fps: 30.0,
             width,
             height,
-            player: dotlottie_rs::DotLottiePlayer::new(dotlottie_rs::Config {
-                autoplay: true,
-                layout: dotlottie_rs::Layout::new(dotlottie_rs::Fit::Contain, vec![0.5, 0.5]),
-                ..dotlottie_rs::Config::default()
-            }),
+            renderer: dotlottie_rs::TvgRenderer::new(dotlottie_rs::TvgEngine::TvgEngineSw, 0),
+            animation: dotlottie_rs::TvgAnimation::default(),
+            layout: dotlottie_rs::Layout::new(dotlottie_rs::Fit::Contain, vec![0.5, 0.5]),
             frame_step: 0.0,
             frame_number: 0.0,
             mode: Mode::Forward,
             direction: Direction::Forward,
             loop_animation: false,
             initialized: false,
+            loaded: false,
         }
     }
 }
@@ -98,66 +100,82 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
 impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
     fn update_source(&mut self, _time: f64, outframe: &mut [u32]) {
         if !self.initialized {
-            self.initialized = true;
-            if let Ok(animation_path) = self.animation_path.to_str() {
-                let loaded = if animation_path.ends_with(".lottie") {
-                    if let Ok(data) = std::fs::read(animation_path) {
-                        self.player.load_dotlottie_data(
-                            &data,
-                            self.width as u32,
-                            self.height as u32,
-                        )
-                    } else {
-                        false
-                    }
-                } else {
-                    self.player.load_animation_path(
-                        animation_path,
-                        self.width as u32,
-                        self.height as u32,
-                    )
-                };
-                if loaded {
-                    let player_fps = self.player.total_frames() / self.player.duration();
-                    self.frame_step = player_fps / self.video_fps as f32;
-                } else {
-                    eprintln!("Failed to load lottie animation path {animation_path}");
-                }
-            } else {
-                eprintln!("Invalid lottie animation path");
+            if let Err(err) = self.initialize() {
+                eprintln!("Failed to initialize plugin: {}", err);
+                return;
             }
         }
-        if !self.player.is_loaded() {
+        if !self.loaded {
             return;
         }
 
-        self.player.set_frame(self.frame_number);
-        if !self.player.render() {
-            println!("l0ttie render failed frame {}", self.frame_number);
-            return;
+        if let Err(err) = self.render(outframe) {
+            eprintln!("Failed to render: {:?}", err);
         }
+    }
+}
+
+impl L0ttiePlugin {
+    fn initialize(&mut self) -> Result<(), Box<dyn Error>> {
+        self.initialized = true;
+        let animation_path = self
+            .animation_path
+            .to_str()
+            .map_err(|err| format!("Invalid lottie animation path: {}", err))?;
+        let data = std::fs::read_to_string(animation_path)
+            .map_err(|err| format!("Failed to read lottie animation path: {}", err))?;
+        self.animation
+            .load_data(&data, "lottie", true)
+            .map_err(|err| format!("Failed to load lottie animation path: {:?}", err))?;
+        let player_fps = self
+            .animation
+            .get_total_frame()
+            .map_err(|err| format!("Failed to query frame count: {:?}", err))?
+            / self
+                .animation
+                .get_duration()
+                .map_err(|err| format!("Failed to query duration: {:?}", err))?;
+        self.frame_step = player_fps / self.video_fps as f32;
+        self.renderer
+            .push(Drawable::Animation(&self.animation))
+            .map_err(|err| format!("Failed to add animation: {:?}", err))?;
+        self.loaded = true;
+        Ok(())
+    }
+
+    fn render(&mut self, framebuffer: &mut [u32]) -> Result<(), TvgError> {
+        // Ignore errors
+        self.animation.set_frame(self.frame_number);
+        // XXX https://github.com/LottieFiles/dotlottie-rs/pull/344
+        self.renderer.set_target(
+            framebuffer,
+            self.width as u32,
+            self.width as u32,
+            self.height as u32,
+            ColorSpace::ARGB8888,
+        )?;
+        self.renderer.update()?;
+        self.renderer.draw(true)?;
+        self.renderer.sync()?;
 
         (self.frame_number, self.direction) = self.mode.next_frame(
             self.frame_number,
             self.frame_step,
             self.direction,
             0.0,
-            self.player.total_frames(),
+            self.animation.get_total_frame()?,
             self.loop_animation,
         );
 
-        let frame = unsafe {
-            &slice::from_raw_parts(self.player.buffer(), self.player.buffer_len() as usize)
-                [0..(self.width * self.height)]
-        };
-        outframe.copy_from_slice(frame);
         // XXX no rotation seems correct, but it should be 8
         #[cfg(any())]
-        for pixel in outframe {
+        for pixel in framebuffer {
             // Rotate left by 8 bits: ARGB -> RGBA
             // dotlottie_rs::ColorSpace::ARGB8888 -> frei0r_rs2::ColorModel::RGBA8888
             *pixel = pixel.rotate_left(8);
         }
+
+        Ok(())
     }
 }
 
