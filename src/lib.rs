@@ -61,7 +61,13 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             c"Fit animation to video frame: 'contain' (default), 'fill', 'cover', 'fit-width', 'fit-height', 'none'",
             |plugin| Fit(plugin.layout.fit).into(),
             |plugin, value| {
-                plugin.layout.fit = Fit::from(value).0;
+                let fit = Fit::from(value).0;
+                if fit == plugin.layout.fit {
+                    return;
+                }
+                if let Err(err) = plugin.compute_fit(fit) {
+                    eprintln!("Failed to compute fit: {:?}", err);
+                }
             }
         ),
     ];
@@ -78,7 +84,7 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
     }
 
     fn new(width: usize, height: usize) -> Self {
-        Self {
+        let mut this = Self {
             animation_path: c"".into(),
             video_fps: 30.0,
             width,
@@ -93,7 +99,11 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             loop_animation: false,
             initialized: false,
             loaded: false,
+        };
+        if let Err(err) = this.compute_fit(dotlottie_rs::Fit::Contain) {
+            eprintln!("Failed to compute fit: {:?}", err);
         }
+        this
     }
 }
 
@@ -136,6 +146,7 @@ impl L0ttiePlugin {
                 .get_duration()
                 .map_err(|err| format!("Failed to query duration: {:?}", err))?;
         self.frame_step = player_fps / self.video_fps as f32;
+        //XXX support background color, push a shape
         self.renderer
             .push(Drawable::Animation(&self.animation))
             .map_err(|err| format!("Failed to add animation: {:?}", err))?;
@@ -143,17 +154,32 @@ impl L0ttiePlugin {
         Ok(())
     }
 
+    fn compute_fit(&mut self, fit: dotlottie_rs::Fit) -> Result<(), TvgError> {
+        let (animation_width, animation_height) = self.animation.get_size()?;
+        let (sx, sy, tx, ty) = self.layout.compute_layout_transform(
+            self.width as f32,
+            self.height as f32,
+            animation_width,
+            animation_height,
+        );
+        self.animation.set_size(sx, sy)?;
+        self.animation.translate(tx, ty)?;
+        self.layout.fit = fit;
+        Ok(())
+    }
+
     fn render(&mut self, framebuffer: &mut [u32]) -> Result<(), TvgError> {
-        // Ignore errors
-        self.animation.set_frame(self.frame_number);
-        // XXX https://github.com/LottieFiles/dotlottie-rs/pull/344
+        // XXX pass slice directly https://github.com/LottieFiles/dotlottie-rs/pull/344
+        let mut vecbuffer = Vec::from(framebuffer);
         self.renderer.set_target(
-            framebuffer,
+            &mut vecbuffer,
             self.width as u32,
             self.width as u32,
             self.height as u32,
             ColorSpace::ARGB8888,
         )?;
+        // Ignore errors, fails if we set the same frame
+        let _ = self.animation.set_frame(self.frame_number);
         self.renderer.update()?;
         self.renderer.draw(true)?;
         self.renderer.sync()?;
