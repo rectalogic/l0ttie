@@ -23,6 +23,7 @@ pub struct L0ttiePlugin {
     loop_animation: bool,
     initialized: bool,
     loaded: bool,
+    buffer: Vec<u32>,
 }
 
 impl frei0r_rs2::Plugin for L0ttiePlugin {
@@ -80,12 +81,25 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
     }
 
     fn new(width: usize, height: usize) -> Self {
+        let mut buffer = vec![0; width * height];
+        let mut renderer = dotlottie_rs::TvgRenderer::new(dotlottie_rs::TvgEngine::TvgEngineSw, 0);
+        if let Err(err) = renderer.set_target(
+            // XXX pass slice directly https://github.com/LottieFiles/dotlottie-rs/pull/344
+            &mut buffer,
+            width as u32,
+            width as u32,
+            height as u32,
+            // ColorSpace::ARGB8888,
+            ColorSpace::ABGR8888,
+        ) {
+            eprintln!("Failed to set render target: {:?}", err);
+        }
         Self {
             animation_path: c"".into(),
             video_fps: 30.0,
             width,
             height,
-            renderer: dotlottie_rs::TvgRenderer::new(dotlottie_rs::TvgEngine::TvgEngineSw, 0),
+            renderer,
             animation: dotlottie_rs::TvgAnimation::default(),
             layout: dotlottie_rs::Layout::new(dotlottie_rs::Fit::Contain, vec![0.5, 0.5]),
             recompute_layout: true,
@@ -96,6 +110,7 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             loop_animation: false,
             initialized: false,
             loaded: false,
+            buffer,
         }
     }
 }
@@ -161,16 +176,6 @@ impl L0ttiePlugin {
     }
 
     fn render(&mut self, framebuffer: &mut [u32]) -> Result<(), TvgError> {
-        // XXX pass slice directly https://github.com/LottieFiles/dotlottie-rs/pull/344
-        let mut vecbuffer = Vec::from(framebuffer);
-        self.renderer.set_target(
-            &mut vecbuffer,
-            self.width as u32,
-            self.width as u32,
-            self.height as u32,
-            ColorSpace::ARGB8888,
-        )?;
-
         if self.recompute_layout {
             if let Err(err) = self.compute_layout() {
                 eprintln!("Failed to compute layout: {:?}", err);
@@ -194,13 +199,7 @@ impl L0ttiePlugin {
             self.loop_animation,
         );
 
-        // XXX no rotation seems correct, but it should be 8
-        #[cfg(any())]
-        for pixel in framebuffer {
-            // Rotate left by 8 bits: ARGB -> RGBA
-            // dotlottie_rs::ColorSpace::ARGB8888 -> frei0r_rs2::ColorModel::RGBA8888
-            *pixel = pixel.rotate_left(8);
-        }
+        framebuffer.copy_from_slice(&self.buffer);
 
         Ok(())
     }
