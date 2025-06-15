@@ -1,11 +1,9 @@
 // Copyright (C) 2025 Andrew Wason
 // SPDX-License-Identifier: GPL-3.0-or-later
-use std::{
-    error::Error,
-    ffi::{CStr, CString},
-};
+use std::ffi::{CStr, CString};
 
-use dotlottie_rs::{Animation, ColorSpace, Drawable, Renderer, TvgError};
+use anyhow::Context;
+use dotlottie_rs::{Animation, ColorSpace, Drawable, Renderer};
 
 pub struct L0ttiePlugin {
     animation_path: CString,
@@ -129,35 +127,35 @@ impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
 }
 
 impl L0ttiePlugin {
-    fn initialize(&mut self) -> Result<(), Box<dyn Error>> {
+    fn initialize(&mut self) -> anyhow::Result<()> {
         self.initialized = true;
         let animation_path = self
             .animation_path
             .to_str()
-            .map_err(|err| format!("Invalid lottie animation path: {}", err))?;
+            .with_context(|| format!("Invalid lottie animation path: {:?}", self.animation_path))?;
         let data = std::fs::read_to_string(animation_path)
-            .map_err(|err| format!("Failed to read lottie animation path: {}", err))?;
+            .with_context(|| format!("Failed to read lottie animation path: {animation_path}"))?;
         self.animation
             .load_data(&data, "lottie", true)
-            .map_err(|err| format!("Failed to load lottie animation path: {:?}", err))?;
+            .with_context(|| format!("Failed to load lottie animation path: {animation_path}"))?;
         let player_fps = self
             .animation
             .get_total_frame()
-            .map_err(|err| format!("Failed to query frame count: {:?}", err))?
+            .context("Failed to query frame count")?
             / self
                 .animation
                 .get_duration()
-                .map_err(|err| format!("Failed to query duration: {:?}", err))?;
+                .context("Failed to query duration")?;
         self.frame_step = player_fps / self.video_fps as f32;
         //XXX support background color, push a shape
         self.renderer
             .push(Drawable::Animation(&self.animation))
-            .map_err(|err| format!("Failed to add animation: {:?}", err))?;
+            .context("Failed to add animation")?;
         self.loaded = true;
         Ok(())
     }
 
-    fn compute_layout(&mut self) -> Result<(), TvgError> {
+    fn compute_layout(&mut self) -> anyhow::Result<()> {
         let (animation_width, animation_height) = self.animation.get_size()?;
         let (sx, sy, tx, ty) = self.layout.compute_layout_transform(
             self.width as f32,
@@ -170,13 +168,10 @@ impl L0ttiePlugin {
         Ok(())
     }
 
-    fn render(&mut self) -> Result<(), TvgError> {
+    fn render(&mut self) -> anyhow::Result<()> {
         if self.recompute_layout {
-            if let Err(err) = self.compute_layout() {
-                eprintln!("Failed to compute layout: {:?}", err);
-            } else {
-                self.recompute_layout = false;
-            }
+            self.compute_layout().context("Failed to compute layout")?;
+            self.recompute_layout = false;
         }
 
         // Ignore errors, fails if we set the same frame
