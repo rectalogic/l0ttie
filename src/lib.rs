@@ -23,7 +23,6 @@ pub struct L0ttiePlugin {
     loop_animation: bool,
     initialized: bool,
     loaded: bool,
-    buffer: Vec<u32>,
 }
 
 impl frei0r_rs2::Plugin for L0ttiePlugin {
@@ -81,25 +80,12 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
     }
 
     fn new(width: usize, height: usize) -> Self {
-        let mut buffer = vec![0; width * height];
-        let mut renderer = dotlottie_rs::TvgRenderer::new(dotlottie_rs::TvgEngine::TvgEngineSw, 0);
-        if let Err(err) = renderer.set_target(
-            // XXX pass slice directly https://github.com/LottieFiles/dotlottie-rs/pull/344
-            &mut buffer,
-            width as u32,
-            width as u32,
-            height as u32,
-            // ColorSpace::ARGB8888,
-            ColorSpace::ABGR8888,
-        ) {
-            eprintln!("Failed to set render target: {:?}", err);
-        }
         Self {
             animation_path: c"".into(),
             video_fps: 30.0,
             width,
             height,
-            renderer,
+            renderer: dotlottie_rs::TvgRenderer::new(dotlottie_rs::TvgEngine::TvgEngineSw, 0),
             animation: dotlottie_rs::TvgAnimation::default(),
             layout: dotlottie_rs::Layout::new(dotlottie_rs::Fit::Contain, vec![0.5, 0.5]),
             recompute_layout: true,
@@ -110,13 +96,22 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             loop_animation: false,
             initialized: false,
             loaded: false,
-            buffer,
         }
     }
 }
 
 impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
     fn update_source(&mut self, _time: f64, outframe: &mut [u32]) {
+        if let Err(err) = self.renderer.set_target(
+            outframe,
+            self.width as u32,
+            self.width as u32,
+            self.height as u32,
+            ColorSpace::ABGR8888,
+        ) {
+            eprintln!("Failed to set render target: {:?}", err);
+            return;
+        }
         if !self.initialized {
             if let Err(err) = self.initialize() {
                 eprintln!("Failed to initialize plugin: {}", err);
@@ -127,7 +122,7 @@ impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
             return;
         }
 
-        if let Err(err) = self.render(outframe) {
+        if let Err(err) = self.render() {
             eprintln!("Failed to render: {:?}", err);
         }
     }
@@ -175,7 +170,7 @@ impl L0ttiePlugin {
         Ok(())
     }
 
-    fn render(&mut self, framebuffer: &mut [u32]) -> Result<(), TvgError> {
+    fn render(&mut self) -> Result<(), TvgError> {
         if self.recompute_layout {
             if let Err(err) = self.compute_layout() {
                 eprintln!("Failed to compute layout: {:?}", err);
@@ -198,8 +193,6 @@ impl L0ttiePlugin {
             self.animation.get_total_frame()?,
             self.loop_animation,
         );
-
-        framebuffer.copy_from_slice(&self.buffer);
 
         Ok(())
     }

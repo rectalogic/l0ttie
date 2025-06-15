@@ -162,7 +162,7 @@ dependencies = [
 [[package]]
 name = "dotlottie-rs"
 version = "0.1.0"
-source = "git+https://github.com/LottieFiles/dotlottie-rs.git?tag=v0.1.43#8f1642a575c09a171176920b5857570b6fac5c50"
+source = "git+https://github.com/LottieFiles/dotlottie-rs.git?rev=07c78aa61f5093b0e78c465f7e1a06e60f013f35#07c78aa61f5093b0e78c465f7e1a06e60f013f35"
 dependencies = [
  "bindgen 0.70.1",
  "conan2",
