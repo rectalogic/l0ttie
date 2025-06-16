@@ -103,3 +103,193 @@ impl From<Mode> for &'static CStr {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DURATION: f32 = 10.0;
+
+    #[test]
+    fn test_forward_mode_no_loop() {
+        let mode = Mode::Forward;
+
+        // Within duration
+        assert_eq!(mode.next_frame(5.0, DURATION, false), 5.0);
+        assert_eq!(mode.next_frame(0.0, DURATION, false), 0.0);
+        assert_eq!(mode.next_frame(10.0, DURATION, false), 10.0);
+
+        // Beyond duration
+        assert_eq!(mode.next_frame(15.0, DURATION, false), 10.0);
+        assert_eq!(mode.next_frame(25.0, DURATION, false), 10.0);
+    }
+
+    #[test]
+    fn test_forward_mode_with_loop() {
+        let mode = Mode::Forward;
+
+        // Within duration
+        assert_eq!(mode.next_frame(5.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(0.0, DURATION, true), 0.0);
+        assert_eq!(mode.next_frame(10.0, DURATION, true), 0.0);
+
+        // Beyond duration - should wrap around
+        assert_eq!(mode.next_frame(15.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(25.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(30.0, DURATION, true), 0.0);
+    }
+
+    #[test]
+    fn test_reverse_mode_no_loop() {
+        let mode = Mode::Reverse;
+
+        // Within duration
+        assert_eq!(mode.next_frame(5.0, DURATION, false), 5.0);
+        assert_eq!(mode.next_frame(0.0, DURATION, false), 10.0);
+        assert_eq!(mode.next_frame(10.0, DURATION, false), 0.0);
+
+        // Beyond duration
+        assert_eq!(mode.next_frame(15.0, DURATION, false), 0.0);
+        assert_eq!(mode.next_frame(25.0, DURATION, false), 0.0);
+    }
+
+    #[test]
+    fn test_reverse_mode_with_loop() {
+        let mode = Mode::Reverse;
+
+        // Within duration
+        assert_eq!(mode.next_frame(5.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(0.0, DURATION, true), 10.0);
+        assert_eq!(mode.next_frame(10.0, DURATION, true), 10.0);
+
+        // Beyond duration - should wrap around
+        assert_eq!(mode.next_frame(15.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(25.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(30.0, DURATION, true), 10.0);
+    }
+
+    #[test]
+    fn test_bounce_mode_no_loop() {
+        let mode = Mode::Bounce;
+
+        // First half of bounce cycle (0 -> duration)
+        assert_eq!(mode.next_frame(0.0, DURATION, false), 0.0);
+        assert_eq!(mode.next_frame(5.0, DURATION, false), 5.0);
+        assert_eq!(mode.next_frame(10.0, DURATION, false), 10.0);
+
+        // Second half of bounce cycle (duration -> 0)
+        assert_eq!(mode.next_frame(15.0, DURATION, false), 5.0);
+        assert_eq!(mode.next_frame(20.0, DURATION, false), 0.0);
+
+        // Beyond one complete bounce cycle
+        assert_eq!(mode.next_frame(25.0, DURATION, false), 0.0);
+        assert_eq!(mode.next_frame(30.0, DURATION, false), 0.0);
+    }
+
+    #[test]
+    fn test_bounce_mode_with_loop() {
+        let mode = Mode::Bounce;
+
+        // First bounce cycle
+        assert_eq!(mode.next_frame(0.0, DURATION, true), 0.0);
+        assert_eq!(mode.next_frame(5.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(10.0, DURATION, true), 10.0);
+        assert_eq!(mode.next_frame(15.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(20.0, DURATION, true), 0.0);
+
+        // Second bounce cycle (should repeat)
+        assert_eq!(mode.next_frame(25.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(30.0, DURATION, true), 10.0);
+        assert_eq!(mode.next_frame(35.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(40.0, DURATION, true), 0.0);
+    }
+
+    #[test]
+    fn test_reverse_bounce_mode_no_loop() {
+        let mode = Mode::ReverseBounce;
+
+        // First half of reverse bounce cycle (duration -> 0)
+        assert_eq!(mode.next_frame(0.0, DURATION, false), 10.0);
+        assert_eq!(mode.next_frame(5.0, DURATION, false), 5.0);
+        assert_eq!(mode.next_frame(10.0, DURATION, false), 0.0);
+
+        // Second half of reverse bounce cycle (0 -> duration)
+        assert_eq!(mode.next_frame(15.0, DURATION, false), 5.0);
+        assert_eq!(mode.next_frame(20.0, DURATION, false), 10.0);
+
+        // Beyond one complete reverse bounce cycle
+        assert_eq!(mode.next_frame(25.0, DURATION, false), 10.0);
+        assert_eq!(mode.next_frame(30.0, DURATION, false), 10.0);
+    }
+
+    #[test]
+    fn test_reverse_bounce_mode_with_loop() {
+        let mode = Mode::ReverseBounce;
+
+        // First reverse bounce cycle
+        assert_eq!(mode.next_frame(0.0, DURATION, true), 10.0);
+        assert_eq!(mode.next_frame(5.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(10.0, DURATION, true), 0.0);
+        assert_eq!(mode.next_frame(15.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(20.0, DURATION, true), 10.0);
+
+        // Second reverse bounce cycle (should repeat)
+        assert_eq!(mode.next_frame(25.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(30.0, DURATION, true), 0.0);
+        assert_eq!(mode.next_frame(35.0, DURATION, true), 5.0);
+        assert_eq!(mode.next_frame(40.0, DURATION, true), 10.0);
+    }
+
+    #[test]
+    fn test_zero_duration() {
+        let modes = [
+            Mode::Forward,
+            Mode::Reverse,
+            Mode::Bounce,
+            Mode::ReverseBounce,
+        ];
+
+        for mode in modes {
+            assert_eq!(mode.next_frame(5.0, 0.0, false), 0.0);
+            assert_eq!(mode.next_frame(5.0, 0.0, true), 0.0);
+        }
+    }
+
+    #[test]
+    fn test_negative_duration() {
+        let modes = [
+            Mode::Forward,
+            Mode::Reverse,
+            Mode::Bounce,
+            Mode::ReverseBounce,
+        ];
+
+        for mode in modes {
+            assert_eq!(mode.next_frame(5.0, -1.0, false), 0.0);
+            assert_eq!(mode.next_frame(5.0, -1.0, true), 0.0);
+        }
+    }
+
+    #[test]
+    fn test_mode_from_cstr() {
+        assert!(matches!(Mode::from(MODE_FORWARD), Mode::Forward));
+        assert!(matches!(Mode::from(MODE_REVERSE), Mode::Reverse));
+        assert!(matches!(Mode::from(MODE_BOUNCE), Mode::Bounce));
+        assert!(matches!(
+            Mode::from(MODE_REVERSE_BOUNCE),
+            Mode::ReverseBounce
+        ));
+
+        // Test unknown mode defaults to Forward
+        let unknown = c"unknown";
+        assert!(matches!(Mode::from(unknown), Mode::Forward));
+    }
+
+    #[test]
+    fn test_mode_to_cstr() {
+        assert_eq!(<&CStr>::from(Mode::Forward), MODE_FORWARD);
+        assert_eq!(<&CStr>::from(Mode::Reverse), MODE_REVERSE);
+        assert_eq!(<&CStr>::from(Mode::Bounce), MODE_BOUNCE);
+        assert_eq!(<&CStr>::from(Mode::ReverseBounce), MODE_REVERSE_BOUNCE);
+    }
+}
