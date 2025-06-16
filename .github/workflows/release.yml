@@ -1,0 +1,54 @@
+name: Publish GitHub Release
+
+on:
+  push:
+    tags:
+      - "**"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build distribution package
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rustup
+        run: |
+          rustup update stable
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.7.4"
+      - name: Install conan
+        run: |
+          uv tool install conan
+          uv tool update-shell
+      - name: Build
+        shell: bash
+        run: |
+          cargo build --all-targets --release --verbose
+          # ffmpeg on macOS incorrectly expects .dylib not .so
+          if [ "$RUNNER_OS" == "macOS"]; then
+            ln -s l0ttie.so target/release/l0ttie.dylib
+          fi
+          shopt -s extglob
+          tar -C target/release/ -czvf l0ttie-${{ runner.os }}.tar.gz l0ttie.${{ runner.os == 'Windows' && 'dll' || '@(so|dylib)' }}
+      - name: Upload Release Assets
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        uses: softprops/action-gh-release@v1
+        with:
+          files: "*.tar.gz"
+      - name: Upload Artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          path: "*.tar.gz"
