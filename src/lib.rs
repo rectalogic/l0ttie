@@ -1,13 +1,15 @@
 // Copyright (C) 2025 Andrew Wason
 // SPDX-License-Identifier: GPL-3.0-or-later
-use std::ffi::{CStr, CString};
+mod fit;
+mod mode;
+use std::ffi::CString;
 
 use anyhow::Context;
 use dotlottie_rs::{Animation, ColorSpace, Drawable, Renderer, Shape};
 
 pub struct L0ttiePlugin {
     animation_path: CString,
-    mode: Mode,
+    mode: mode::Mode,
     loop_animation: bool,
     layout: dotlottie_rs::Layout,
     time_scale: f64,
@@ -45,7 +47,7 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             c"Playback mode: 'forward' (default), 'reverse', 'bounce', 'reverse-bounce'",
             |plugin| plugin.mode.into(),
             |plugin, value| {
-                plugin.mode = Mode::from(value);
+                plugin.mode = mode::Mode::from(value);
             }
         ),
         frei0r_rs2::ParamInfo::new_bool(
@@ -59,9 +61,9 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
         frei0r_rs2::ParamInfo::new_string(
             c"fit",
             c"Fit animation to video frame: 'contain' (default), 'fill', 'cover', 'fit-width', 'fit-height', 'none'",
-            |plugin| Fit(plugin.layout.fit).into(),
+            |plugin| fit::Fit(plugin.layout.fit).into(),
             |plugin, value| {
-                plugin.layout.fit = Fit::from(value).0;
+                plugin.layout.fit = fit::Fit::from(value).0;
                 plugin.recompute_layout = true;
             }
         ),
@@ -91,7 +93,7 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             animation_path: c"".into(),
             width,
             height,
-            mode: Mode::Forward,
+            mode: mode::Mode::Forward,
             loop_animation: false,
             time_scale: 1.0,
             layout: dotlottie_rs::Layout::new(dotlottie_rs::Fit::Contain, vec![0.5, 0.5]),
@@ -214,146 +216,6 @@ impl L0ttiePlugin {
         self.renderer.sync()?;
 
         Ok(())
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-enum Mode {
-    Forward,
-    Reverse,
-    Bounce,
-    ReverseBounce,
-}
-
-impl Mode {
-    fn next_frame(&self, time: f64, duration: f32, loop_animation: bool) -> f32 {
-        let time = time as f32;
-
-        if duration <= 0.0 {
-            return 0.0;
-        }
-
-        match self {
-            Mode::Forward => {
-                if loop_animation {
-                    time % duration
-                } else {
-                    time.min(duration)
-                }
-            }
-            Mode::Reverse => {
-                if loop_animation {
-                    duration - (time % duration)
-                } else {
-                    (duration - time).max(0.0)
-                }
-            }
-            Mode::Bounce => {
-                let cycle_duration = 2.0 * duration;
-                if loop_animation {
-                    let cycle_time = time % cycle_duration;
-                    if cycle_time <= duration {
-                        cycle_time
-                    } else {
-                        cycle_duration - cycle_time
-                    }
-                } else if time <= duration {
-                    time
-                } else if time <= cycle_duration {
-                    cycle_duration - time
-                } else {
-                    0.0
-                }
-            }
-            Mode::ReverseBounce => {
-                let cycle_duration = 2.0 * duration;
-                if loop_animation {
-                    let cycle_time = time % cycle_duration;
-                    if cycle_time <= duration {
-                        duration - cycle_time
-                    } else {
-                        cycle_time - duration
-                    }
-                } else if time <= duration {
-                    duration - time
-                } else if time <= cycle_duration {
-                    time - duration
-                } else {
-                    duration
-                }
-            }
-        }
-    }
-}
-
-const MODE_FORWARD: &CStr = c"forward";
-const MODE_REVERSE: &CStr = c"reverse";
-const MODE_BOUNCE: &CStr = c"bounce";
-const MODE_REVERSE_BOUNCE: &CStr = c"reverse-bounce";
-impl From<&CStr> for Mode {
-    fn from(value: &CStr) -> Self {
-        if value == MODE_FORWARD {
-            Mode::Forward
-        } else if value == MODE_REVERSE {
-            Mode::Reverse
-        } else if value == MODE_BOUNCE {
-            Mode::Bounce
-        } else if value == MODE_REVERSE_BOUNCE {
-            Mode::ReverseBounce
-        } else {
-            Mode::Forward
-        }
-    }
-}
-impl From<Mode> for &'static CStr {
-    fn from(mode: Mode) -> Self {
-        match mode {
-            Mode::Forward => MODE_FORWARD,
-            Mode::Reverse => MODE_REVERSE,
-            Mode::Bounce => MODE_BOUNCE,
-            Mode::ReverseBounce => MODE_REVERSE_BOUNCE,
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-struct Fit(dotlottie_rs::Fit);
-const FIT_CONTAIN: &CStr = c"contain";
-const FIT_FILL: &CStr = c"fill";
-const FIT_COVER: &CStr = c"cover";
-const FIT_WIDTH: &CStr = c"fit-width";
-const FIT_HEIGHT: &CStr = c"fit-height";
-const FIT_NONE: &CStr = c"none";
-impl From<&CStr> for Fit {
-    fn from(value: &CStr) -> Self {
-        let fit = if value == FIT_CONTAIN {
-            dotlottie_rs::Fit::Contain
-        } else if value == FIT_FILL {
-            dotlottie_rs::Fit::Fill
-        } else if value == FIT_COVER {
-            dotlottie_rs::Fit::Cover
-        } else if value == FIT_WIDTH {
-            dotlottie_rs::Fit::FitWidth
-        } else if value == FIT_HEIGHT {
-            dotlottie_rs::Fit::FitHeight
-        } else if value == FIT_NONE {
-            dotlottie_rs::Fit::None
-        } else {
-            dotlottie_rs::Fit::Contain
-        };
-        Fit(fit)
-    }
-}
-impl From<Fit> for &'static CStr {
-    fn from(fit: Fit) -> Self {
-        match fit.0 {
-            dotlottie_rs::Fit::Contain => FIT_CONTAIN,
-            dotlottie_rs::Fit::Fill => FIT_FILL,
-            dotlottie_rs::Fit::Cover => FIT_COVER,
-            dotlottie_rs::Fit::FitWidth => FIT_WIDTH,
-            dotlottie_rs::Fit::FitHeight => FIT_HEIGHT,
-            dotlottie_rs::Fit::None => FIT_NONE,
-        }
     }
 }
 
