@@ -7,18 +7,15 @@ use dotlottie_rs::{Animation, ColorSpace, Drawable, Renderer};
 
 pub struct L0ttiePlugin {
     animation_path: CString,
-    video_fps: f64,
     mode: Mode,
+    loop_animation: bool,
+    layout: dotlottie_rs::Layout,
+    time_scale: f64,
     width: usize,
     height: usize,
     renderer: dotlottie_rs::TvgRenderer,
     animation: dotlottie_rs::TvgAnimation,
-    layout: dotlottie_rs::Layout,
     recompute_layout: bool,
-    frame_number: f32,
-    frame_step: f32,
-    direction: Direction,
-    loop_animation: bool,
     initialized: bool,
     loaded: bool,
 }
@@ -34,10 +31,12 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             |plugin, value| plugin.animation_path = value.to_owned(),
         ),
         frei0r_rs2::param::ParamInfo::new_double(
-            c"video_fps",
-            c"Framerate of the generated video",
-            |plugin| plugin.video_fps,
-            |plugin, value| plugin.video_fps = value,
+            c"time_scale",
+            c"Time scale multiplier",
+            |plugin| plugin.time_scale,
+            |plugin, value| {
+                plugin.time_scale = value;
+            }
         ),
         frei0r_rs2::param::ParamInfo::new_string(
             c"mode",
@@ -80,18 +79,15 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
     fn new(width: usize, height: usize) -> Self {
         Self {
             animation_path: c"".into(),
-            video_fps: 30.0,
             width,
             height,
+            mode: Mode::Forward,
+            loop_animation: false,
+            time_scale: 1.0,
+            layout: dotlottie_rs::Layout::new(dotlottie_rs::Fit::Contain, vec![0.5, 0.5]),
             renderer: dotlottie_rs::TvgRenderer::new(dotlottie_rs::TvgEngine::TvgEngineSw, 0),
             animation: dotlottie_rs::TvgAnimation::default(),
-            layout: dotlottie_rs::Layout::new(dotlottie_rs::Fit::Contain, vec![0.5, 0.5]),
             recompute_layout: true,
-            frame_step: 0.0,
-            frame_number: 0.0,
-            mode: Mode::Forward,
-            direction: Direction::Forward,
-            loop_animation: false,
             initialized: false,
             loaded: false,
         }
@@ -99,7 +95,7 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
 }
 
 impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
-    fn update_source(&mut self, _time: f64, outframe: &mut [u32]) {
+    fn update_source(&mut self, time: f64, outframe: &mut [u32]) {
         if let Err(err) = self.renderer.set_target(
             outframe,
             self.width as u32,
@@ -120,7 +116,7 @@ impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
             return;
         }
 
-        if let Err(err) = self.render() {
+        if let Err(err) = self.render(time * self.time_scale) {
             eprintln!("Failed to render: {:?}", err);
         }
     }
@@ -138,15 +134,6 @@ impl L0ttiePlugin {
         self.animation
             .load_data(&data, "lottie", true)
             .with_context(|| format!("Failed to load lottie animation path: {animation_path}"))?;
-        let player_fps = self
-            .animation
-            .get_total_frame()
-            .context("Failed to query frame count")?
-            / self
-                .animation
-                .get_duration()
-                .context("Failed to query duration")?;
-        self.frame_step = player_fps / self.video_fps as f32;
         //XXX support background color, push a shape
         self.renderer
             .push(Drawable::Animation(&self.animation))
@@ -168,35 +155,37 @@ impl L0ttiePlugin {
         Ok(())
     }
 
-    fn render(&mut self) -> anyhow::Result<()> {
+    fn render(&mut self, time: f64) -> anyhow::Result<()> {
         if self.recompute_layout {
             self.compute_layout().context("Failed to compute layout")?;
             self.recompute_layout = false;
         }
 
+        let duration = self
+            .animation
+            .get_duration()
+            .context("Failed to query duration")?;
+        let animation_time = self.mode.next_frame(time, duration, self.loop_animation);
+
+        // Convert animation time to frame number
+        let total_frames = self
+            .animation
+            .get_total_frame()
+            .context("Failed to query total frames")?;
+        let frame_number = if duration > 0.0 {
+            (animation_time / duration) * total_frames
+        } else {
+            0.0
+        };
+
         // Ignore errors, fails if we set the same frame
-        let _ = self.animation.set_frame(self.frame_number);
+        let _ = self.animation.set_frame(frame_number);
         self.renderer.update()?;
         self.renderer.draw(true)?;
         self.renderer.sync()?;
 
-        (self.frame_number, self.direction) = self.mode.next_frame(
-            self.frame_number,
-            self.frame_step,
-            self.direction,
-            0.0,
-            self.animation.get_total_frame()?,
-            self.loop_animation,
-        );
-
         Ok(())
     }
-}
-
-#[derive(Copy, Clone, Debug)]
-enum Direction {
-    Forward,
-    Reverse,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -208,83 +197,62 @@ enum Mode {
 }
 
 impl Mode {
-    fn next_frame(
-        &self,
-        current_frame: f32,
-        frame_step: f32,
-        direction: Direction,
-        start_frame: f32,
-        end_frame: f32,
-        loop_animation: bool,
-    ) -> (f32, Direction) {
-        let next_frame = match direction {
-            Direction::Forward => current_frame + frame_step,
-            Direction::Reverse => current_frame - frame_step,
-        };
+    fn next_frame(&self, time: f64, duration: f32, loop_animation: bool) -> f32 {
+        let time = time as f32;
+
+        if duration <= 0.0 {
+            return 0.0;
+        }
 
         match self {
             Mode::Forward => {
-                if next_frame >= end_frame {
-                    if loop_animation {
-                        (start_frame, direction)
-                    } else {
-                        (end_frame, direction)
-                    }
+                if loop_animation {
+                    time % duration
                 } else {
-                    (next_frame, direction)
+                    time.min(duration)
                 }
             }
             Mode::Reverse => {
-                if next_frame <= start_frame {
-                    if loop_animation {
-                        (end_frame, direction)
-                    } else {
-                        (start_frame, direction)
-                    }
+                if loop_animation {
+                    duration - (time % duration)
                 } else {
-                    (next_frame, direction)
+                    (duration - time).max(0.0)
                 }
             }
-            Mode::Bounce => match direction {
-                Direction::Forward => {
-                    if next_frame >= end_frame {
-                        (end_frame, Direction::Reverse)
+            Mode::Bounce => {
+                let cycle_duration = 2.0 * duration;
+                if loop_animation {
+                    let cycle_time = time % cycle_duration;
+                    if cycle_time <= duration {
+                        cycle_time
                     } else {
-                        (next_frame, direction)
+                        cycle_duration - cycle_time
                     }
+                } else if time <= duration {
+                    time
+                } else if time <= cycle_duration {
+                    cycle_duration - time
+                } else {
+                    0.0
                 }
-                Direction::Reverse => {
-                    if next_frame <= start_frame {
-                        if loop_animation {
-                            (start_frame, Direction::Forward)
-                        } else {
-                            (start_frame, direction)
-                        }
+            }
+            Mode::ReverseBounce => {
+                let cycle_duration = 2.0 * duration;
+                if loop_animation {
+                    let cycle_time = time % cycle_duration;
+                    if cycle_time <= duration {
+                        duration - cycle_time
                     } else {
-                        (next_frame, direction)
+                        cycle_time - duration
                     }
+                } else if time <= duration {
+                    duration - time
+                } else if time <= cycle_duration {
+                    time - duration
+                } else {
+                    duration
                 }
-            },
-            Mode::ReverseBounce => match direction {
-                Direction::Reverse => {
-                    if next_frame <= start_frame {
-                        (start_frame, Direction::Forward)
-                    } else {
-                        (next_frame, direction)
-                    }
-                }
-                Direction::Forward => {
-                    if next_frame >= end_frame {
-                        if loop_animation {
-                            (end_frame, Direction::Reverse)
-                        } else {
-                            (end_frame, direction)
-                        }
-                    } else {
-                        (next_frame, direction)
-                    }
-                }
-            },
+            }
         }
     }
 }
