@@ -37,13 +37,20 @@ jobs:
         run: |
           cargo build --all-targets --release --verbose
           # ffmpeg on macOS incorrectly expects .dylib not .so
-          if [ "$RUNNER_OS" == "macOS"]; then
+          if [ "$RUNNER_OS" == "macOS" ]; then
             ln -s l0ttie.so target/release/l0ttie.dylib
           fi
           shopt -s extglob
-          tar -C target/release/ -czvf l0ttie-${{ runner.os }}.tar.gz l0ttie.${{ runner.os == 'Windows' && 'dll' || '@(so|dylib)' }}
+          cd target/release/
+          tar -czvf ../../l0ttie-${{ runner.os }}.tar.gz l0ttie.${{ runner.os == 'Windows' && 'dll' || '@(so|dylib)' }}
+      - name: Get crate version
+        id: version
+        shell: bash
+        run: |
+          CRATE_VERSION=$(cargo metadata --format-version 1 --no-deps | jq --raw-output  '.packages | map(select(.name == "'l0ttie'")) | .[0].version')
+          echo "crate=$CRATE_VERSION" >> "$GITHUB_OUTPUT"
       - name: Upload Release Assets
-        if: ${{ github.event_name != 'workflow_dispatch' }}
+        if: ${{ github.event_name != 'workflow_dispatch' && github.ref_name == steps.version.outputs.crate }}
         uses: softprops/action-gh-release@v1
         with:
           files: "*.tar.gz"
@@ -51,4 +58,5 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: actions/upload-artifact@v4
         with:
+          name: l0ttie-${{ runner.os }}
           path: "*.tar.gz"
