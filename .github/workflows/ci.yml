@@ -1,0 +1,74 @@
+name: ci
+
+on: push
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ci:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rustup
+        run: |
+          rustup update stable
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.7.4"
+      - name: Install conan
+        run: |
+          uv tool install conan
+          uv tool update-shell
+      - name: Lint
+        if: runner.os == 'Linux'
+        run: |
+          cargo fmt -- --check
+          cargo clippy -- -D warnings
+      - name: Build
+        run: |
+          cargo build --all-targets --release --verbose
+      - name: Run tests
+        run: cargo test --release --verbose
+      - name: Install ffmpeg
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            sudo apt install ffmpeg
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            brew install ffmpeg
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            choco install ffmpeg-full
+          else
+            exit 1
+          fi
+        shell: bash
+      - name: Run examples
+        env:
+          FREI0R_PATH: ${{ github.workspace }}/target/release
+        shell: bash
+        run: |
+          # ffmpeg uses incorrect frei0r suffix on macOS
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            ln -s l0ttie.so target/release/l0ttie.dylib
+          fi
+          mkdir output
+          ffmpeg -f lavfi -i 'testsrc=size=640x360:rate=5:decimals=2' -f lavfi -i "frei0r_src=size=640x360:framerate=5:filter_name=l0ttie:filter_params=.github/workflows/fixtures/emoji.json|0.001" -filter_complex overlay -t 10.96 -y output/overlay.mp4
+          ffmpeg -f lavfi -i "frei0r_src=size=640x360:framerate=5:filter_name=l0ttie:filter_params=.github/workflows/fixtures/emoji.json|0.001|reverse|n|contain|0/0/1" -t 10.96 -y output/background_reverse.mp4
+      - name: Compare videos to fixtures
+        uses: rectalogic/diff-video-action@v1
+        with:
+          current-video-path: output
+          reference-video-glob: .github/workflows/fixtures/*.mp4
+          diff-video-path: output/diff
+          video-threshold: 96.9
+      - name: Upload videos
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: videos-${{ runner.os }}
+          path: output/
