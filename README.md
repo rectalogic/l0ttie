@@ -27,6 +27,10 @@ FREI0R_PATH=frei0r-plugin/ ffmpeg \
   -t 2 -y output.mp4
 ```
 
+
+https://github.com/user-attachments/assets/563f34bc-3e24-4d65-a82d-950a0b4675fb
+
+
 A similar command using `melt` from [MLT framework](https://www.mltframework.org)
 
 ```sh
