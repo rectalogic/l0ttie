@@ -13,8 +13,11 @@ Supported parameters are:
 
 ## Example
 
-Use [ffmpeg](https://ffmpeg.org) to overlay a transparent animation over a video. The animation is half the size of the video and positioned in the lower right corner.
-This assumes the plugin is installed in a local `frei0r-plugin` directory.
+Download the plugin [release](https://github.com/rectalogic/l0ttie/releases) and extract into a `frei0r-plugin` directory.
+
+On macOS you must then `xattr -dr com.apple.quarantine l0ttie.so`.
+
+Example using [ffmpeg](https://ffmpeg.org) to overlay a transparent animation over a video. The animation is half the size of the video and positioned in the lower right corner.
 
 ```sh
 FREI0R_PATH=frei0r-plugin/ ffmpeg \
