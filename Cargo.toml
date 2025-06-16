@@ -14,3 +14,4 @@ anyhow = "1.0.98"
 dotlottie-rs = { git = "https://github.com/LottieFiles/dotlottie-rs.git", rev = "07c78aa61f5093b0e78c465f7e1a06e60f013f35", features = [
     "thorvg-v0",
 ] }
+ureq = "3.0.12"

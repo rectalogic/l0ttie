@@ -6,6 +6,7 @@ use std::ffi::CString;
 
 use anyhow::Context;
 use dotlottie_rs::{Animation, ColorSpace, Drawable, Renderer, Shape};
+use ureq::http::Uri;
 
 pub struct L0ttiePlugin {
     animation_path: CString,
@@ -29,8 +30,8 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
 
     const PARAMS: &'static [frei0r_rs2::ParamInfo<Self>] = &[
         frei0r_rs2::ParamInfo::new_string(
-            c"animation_path",
-            c"Lottie animation file path",
+            c"animation",
+            c"Lottie animation file path or URL",
             |plugin| plugin.animation_path.as_c_str(),
             |plugin, value| plugin.animation_path = value.to_owned(),
         ),
@@ -143,8 +144,30 @@ impl L0ttiePlugin {
             .animation_path
             .to_str()
             .with_context(|| format!("Invalid lottie animation path: {:?}", self.animation_path))?;
-        let data = std::fs::read_to_string(animation_path)
-            .with_context(|| format!("Failed to read lottie animation path: {animation_path}"))?;
+
+        let data = if let Ok(animation_uri) = animation_path.parse::<Uri>() {
+            if animation_uri.scheme().is_some() {
+                ureq::get(animation_path)
+                    .call()
+                    .with_context(|| {
+                        format!("Failed to load lottie animation url: {animation_path}")
+                    })?
+                    .body_mut()
+                    .read_to_string()
+                    .with_context(|| {
+                        format!("Failed to read lottie animation url: {animation_path}")
+                    })?
+            } else {
+                std::fs::read_to_string(animation_path).with_context(|| {
+                    format!("Failed to read lottie animation path: {animation_path}")
+                })?
+            }
+        } else {
+            std::fs::read_to_string(animation_path).with_context(|| {
+                format!("Failed to read lottie animation path: {animation_path}")
+            })?
+        };
+
         self.animation
             .load_data(&data, "lottie", true)
             .with_context(|| format!("Failed to load lottie animation path: {animation_path}"))?;
