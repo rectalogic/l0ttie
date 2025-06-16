@@ -226,8 +226,8 @@ dependencies = [
 
 [[package]]
 name = "frei0r-rs2"
-version = "2.1.0"
-source = "git+https://github.com/rectalogic/frei0r-rs.git?tag=2.1.0#19ec22d2d13678d1826ed0ab30f3e4bd8c2459a3"
+version = "2.2.0"
+source = "git+https://github.com/rectalogic/frei0r-rs.git?tag=2.2.0#ec4ab3067ae3070e90904dc99fe0ac7bd6ba6484"
 dependencies = [
  "frei0r-sys",
  "paste",

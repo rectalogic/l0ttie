@@ -3,7 +3,7 @@
 use std::ffi::{CStr, CString};
 
 use anyhow::Context;
-use dotlottie_rs::{Animation, ColorSpace, Drawable, Renderer};
+use dotlottie_rs::{Animation, ColorSpace, Drawable, Renderer, Shape};
 
 pub struct L0ttiePlugin {
     animation_path: CString,
@@ -11,10 +11,12 @@ pub struct L0ttiePlugin {
     loop_animation: bool,
     layout: dotlottie_rs::Layout,
     time_scale: f64,
+    background_color: Option<frei0r_rs2::Color>,
     width: usize,
     height: usize,
     renderer: dotlottie_rs::TvgRenderer,
     animation: dotlottie_rs::TvgAnimation,
+    background_shape: Option<dotlottie_rs::TvgShape>,
     recompute_layout: bool,
     initialized: bool,
     loaded: bool,
@@ -23,14 +25,14 @@ pub struct L0ttiePlugin {
 impl frei0r_rs2::Plugin for L0ttiePlugin {
     type Kind = frei0r_rs2::KindSource;
 
-    const PARAMS: &'static [frei0r_rs2::param::ParamInfo<Self>] = &[
-        frei0r_rs2::param::ParamInfo::new_string(
+    const PARAMS: &'static [frei0r_rs2::ParamInfo<Self>] = &[
+        frei0r_rs2::ParamInfo::new_string(
             c"animation_path",
             c"Lottie animation file path",
             |plugin| plugin.animation_path.as_c_str(),
             |plugin, value| plugin.animation_path = value.to_owned(),
         ),
-        frei0r_rs2::param::ParamInfo::new_double(
+        frei0r_rs2::ParamInfo::new_double(
             c"time_scale",
             c"Time scale multiplier",
             |plugin| plugin.time_scale,
@@ -38,7 +40,7 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
                 plugin.time_scale = value;
             }
         ),
-        frei0r_rs2::param::ParamInfo::new_string(
+        frei0r_rs2::ParamInfo::new_string(
             c"mode",
             c"Playback mode: 'forward' (default), 'reverse', 'bounce', 'reverse-bounce'",
             |plugin| plugin.mode.into(),
@@ -46,7 +48,7 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
                 plugin.mode = Mode::from(value);
             }
         ),
-        frei0r_rs2::param::ParamInfo::new_bool(
+        frei0r_rs2::ParamInfo::new_bool(
             c"loop",
             c"Loop animation",
             |plugin| plugin.loop_animation,
@@ -54,13 +56,21 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
                 plugin.loop_animation = value;
             }
         ),
-        frei0r_rs2::param::ParamInfo::new_string(
+        frei0r_rs2::ParamInfo::new_string(
             c"fit",
             c"Fit animation to video frame: 'contain' (default), 'fill', 'cover', 'fit-width', 'fit-height', 'none'",
             |plugin| Fit(plugin.layout.fit).into(),
             |plugin, value| {
                 plugin.layout.fit = Fit::from(value).0;
                 plugin.recompute_layout = true;
+            }
+        ),
+        frei0r_rs2::ParamInfo::new_color(
+            c"background_color",
+            c"Background color",
+            |plugin| plugin.background_color.unwrap_or(frei0r_rs2::Color { r:0.0, g:0.0, b:0.0}),
+            |plugin, value| {
+                plugin.background_color = Some(*value);
             }
         ),
     ];
@@ -85,8 +95,10 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             loop_animation: false,
             time_scale: 1.0,
             layout: dotlottie_rs::Layout::new(dotlottie_rs::Fit::Contain, vec![0.5, 0.5]),
+            background_color: None,
             renderer: dotlottie_rs::TvgRenderer::new(dotlottie_rs::TvgEngine::TvgEngineSw, 0),
             animation: dotlottie_rs::TvgAnimation::default(),
+            background_shape: None,
             recompute_layout: true,
             initialized: false,
             loaded: false,
@@ -134,7 +146,24 @@ impl L0ttiePlugin {
         self.animation
             .load_data(&data, "lottie", true)
             .with_context(|| format!("Failed to load lottie animation path: {animation_path}"))?;
-        //XXX support background color, push a shape
+        if let Some(background_color) = self.background_color {
+            let mut background_shape = dotlottie_rs::TvgShape::default();
+            background_shape
+                .append_rect(0.0, 0.0, self.width as f32, self.height as f32, 0.0, 0.0)
+                .context("Failed to construct background shape")?;
+            background_shape
+                .fill((
+                    (background_color.r * 255.0) as u8,
+                    (background_color.g * 255.0) as u8,
+                    (background_color.b * 255.0) as u8,
+                    255,
+                ))
+                .context("Failed to fill background shape")?;
+            self.renderer
+                .push(Drawable::Shape(&background_shape))
+                .context("Failed to add background shape")?;
+            self.background_shape = Some(background_shape);
+        }
         self.renderer
             .push(Drawable::Animation(&self.animation))
             .context("Failed to add animation")?;

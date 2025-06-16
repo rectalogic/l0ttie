@@ -9,8 +9,8 @@ build = "build.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
+frei0r-rs2 = { git = "https://github.com/rectalogic/frei0r-rs.git", tag = "2.2.0" }
 anyhow = "1.0.98"
 dotlottie-rs = { git = "https://github.com/LottieFiles/dotlottie-rs.git", rev = "07c78aa61f5093b0e78c465f7e1a06e60f013f35", features = [
     "thorvg-v0",
 ] }
-frei0r-rs2 = { git = "https://github.com/rectalogic/frei0r-rs.git", tag = "2.1.0" }
