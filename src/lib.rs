@@ -118,12 +118,12 @@ impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
             self.height as u32,
             ColorSpace::ABGR8888,
         ) {
-            eprintln!("Failed to set render target: {:?}", err);
+            eprintln!("Failed to set render target: {err:?}");
             return;
         }
         if !self.initialized {
             if let Err(err) = self.initialize() {
-                eprintln!("Failed to initialize plugin: {}", err);
+                eprintln!("Failed to initialize plugin: {err:?}");
                 return;
             }
         }
@@ -132,7 +132,7 @@ impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
         }
 
         if let Err(err) = self.render(time * self.time_scale) {
-            eprintln!("Failed to render: {:?}", err);
+            eprintln!("Failed to render: {err:?}");
         }
     }
 }
