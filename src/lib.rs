@@ -1,11 +1,13 @@
 // Copyright (C) 2025 Andrew Wason
 // SPDX-License-Identifier: GPL-3.0-or-later
+mod backend;
 mod fit;
 mod mode;
+mod processor;
 use std::ffi::CString;
 
 use anyhow::Context;
-use dotlottie_rs::{Animation, ColorSpace, Drawable, Renderer, Shape};
+use dotlottie_rs::{ColorSpace, Renderer};
 use ureq::http::Uri;
 
 pub struct L0ttiePlugin {
@@ -17,17 +19,9 @@ pub struct L0ttiePlugin {
     background_color: Option<frei0r_rs2::Color>,
     width: usize,
     height: usize,
-    renderer: dotlottie_rs::TvgRenderer,
-    animation: dotlottie_rs::TvgAnimation,
-    background_shape: Option<dotlottie_rs::TvgShape>,
-    recompute_layout: bool,
-    initialized: bool,
-    loaded: bool,
 }
 
-impl frei0r_rs2::Plugin for L0ttiePlugin {
-    type Kind = frei0r_rs2::KindSource;
-
+impl frei0r_rs2::Plugin<0> for L0ttiePlugin {
     const PARAMS: &'static [frei0r_rs2::ParamInfo<Self>] = &[
         frei0r_rs2::ParamInfo::new_string(
             c"animation",
@@ -99,18 +93,10 @@ impl frei0r_rs2::Plugin for L0ttiePlugin {
             time_scale: 1.0,
             layout: dotlottie_rs::Layout::new(dotlottie_rs::Fit::Contain, vec![0.5, 0.5]),
             background_color: None,
-            renderer: dotlottie_rs::TvgRenderer::new(dotlottie_rs::TvgEngine::TvgEngineSw, 0),
-            animation: dotlottie_rs::TvgAnimation::default(),
-            background_shape: None,
-            recompute_layout: true,
-            initialized: false,
-            loaded: false,
         }
     }
-}
 
-impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
-    fn update_source(&mut self, time: f64, outframe: &mut [u32]) {
+    fn update(&mut self, time: f64, _inframes: [&[u32]; 0], outframe: &mut [u32]) {
         if let Err(err) = self.renderer.set_target(
             outframe,
             self.width as u32,
@@ -139,13 +125,12 @@ impl frei0r_rs2::SourcePlugin for L0ttiePlugin {
 
 impl L0ttiePlugin {
     fn initialize(&mut self) -> anyhow::Result<()> {
-        self.initialized = true;
         let animation_path = self
             .animation_path
             .to_str()
             .with_context(|| format!("Invalid lottie animation path: {:?}", self.animation_path))?;
 
-        let data = if let Ok(animation_uri) = animation_path.parse::<Uri>() {
+        let animation_data = if let Ok(animation_uri) = animation_path.parse::<Uri>() {
             if animation_uri.scheme().is_some() {
                 ureq::get(animation_path)
                     .call()
@@ -167,76 +152,6 @@ impl L0ttiePlugin {
                 format!("Failed to read lottie animation path: {animation_path}")
             })?
         };
-
-        self.animation
-            .load_data(&data, "lottie", true)
-            .with_context(|| format!("Failed to load lottie animation path: {animation_path}"))?;
-        if let Some(background_color) = self.background_color {
-            let mut background_shape = dotlottie_rs::TvgShape::default();
-            background_shape
-                .append_rect(0.0, 0.0, self.width as f32, self.height as f32, 0.0, 0.0)
-                .context("Failed to construct background shape")?;
-            background_shape
-                .fill((
-                    (background_color.r * 255.0) as u8,
-                    (background_color.g * 255.0) as u8,
-                    (background_color.b * 255.0) as u8,
-                    255,
-                ))
-                .context("Failed to fill background shape")?;
-            self.renderer
-                .push(Drawable::Shape(&background_shape))
-                .context("Failed to add background shape")?;
-            self.background_shape = Some(background_shape);
-        }
-        self.renderer
-            .push(Drawable::Animation(&self.animation))
-            .context("Failed to add animation")?;
-        self.loaded = true;
-        Ok(())
-    }
-
-    fn compute_layout(&mut self) -> anyhow::Result<()> {
-        let (animation_width, animation_height) = self.animation.get_size()?;
-        let (sx, sy, tx, ty) = self.layout.compute_layout_transform(
-            self.width as f32,
-            self.height as f32,
-            animation_width,
-            animation_height,
-        );
-        self.animation.set_size(sx, sy)?;
-        self.animation.translate(tx, ty)?;
-        Ok(())
-    }
-
-    fn render(&mut self, time: f64) -> anyhow::Result<()> {
-        if self.recompute_layout {
-            self.compute_layout().context("Failed to compute layout")?;
-            self.recompute_layout = false;
-        }
-
-        let duration = self
-            .animation
-            .get_duration()
-            .context("Failed to query duration")?;
-        let animation_time = self.mode.next_frame(time, duration, self.loop_animation);
-
-        // Convert animation time to frame number
-        let total_frames = self
-            .animation
-            .get_total_frame()
-            .context("Failed to query total frames")?;
-        let frame_number = if duration > 0.0 {
-            (animation_time / duration) * total_frames
-        } else {
-            0.0
-        };
-
-        // Ignore errors, fails if we set the same frame
-        let _ = self.animation.set_frame(frame_number);
-        self.renderer.update()?;
-        self.renderer.draw(true)?;
-        self.renderer.sync()?;
 
         Ok(())
     }
