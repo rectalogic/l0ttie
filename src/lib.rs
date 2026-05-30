@@ -4,11 +4,13 @@ mod backend;
 mod fit;
 mod mode;
 mod processor;
+mod render;
 use std::ffi::CString;
 
 use anyhow::Context;
-use dotlottie_rs::{ColorSpace, Renderer};
 use ureq::http::Uri;
+
+use crate::render::RenderProcessor;
 
 pub struct L0ttiePlugin {
     animation_path: CString,
@@ -19,6 +21,7 @@ pub struct L0ttiePlugin {
     background_color: Option<frei0r_rs2::Color>,
     width: usize,
     height: usize,
+    processor: Option<Result<RenderProcessor, ()>>,
 }
 
 impl frei0r_rs2::Plugin<0> for L0ttiePlugin {
@@ -59,7 +62,6 @@ impl frei0r_rs2::Plugin<0> for L0ttiePlugin {
             |plugin| fit::Fit(plugin.layout.fit).into(),
             |plugin, value| {
                 plugin.layout.fit = fit::Fit::from(value).0;
-                plugin.recompute_layout = true;
             }
         ),
         frei0r_rs2::ParamInfo::new_color(
@@ -93,38 +95,36 @@ impl frei0r_rs2::Plugin<0> for L0ttiePlugin {
             time_scale: 1.0,
             layout: dotlottie_rs::Layout::new(dotlottie_rs::Fit::Contain, vec![0.5, 0.5]),
             background_color: None,
+            processor: None,
         }
     }
 
     fn update(&mut self, time: f64, _inframes: [&[u32]; 0], outframe: &mut [u32]) {
-        if let Err(err) = self.renderer.set_target(
-            outframe,
-            self.width as u32,
-            self.width as u32,
-            self.height as u32,
-            ColorSpace::ABGR8888,
-        ) {
-            eprintln!("Failed to set render target: {err:?}");
-            return;
-        }
-        if !self.initialized {
-            if let Err(err) = self.initialize() {
-                eprintln!("Failed to initialize plugin: {err:?}");
-                return;
-            }
-        }
-        if !self.loaded {
-            return;
-        }
+        let processor = match self.processor {
+            Some(Ok(ref mut processor)) => processor,
+            Some(Err(())) => return,
+            None => match self.initialize() {
+                Ok(processor) => {
+                    self.processor = Some(Ok(processor));
+                    self.processor.as_mut().unwrap().as_mut().unwrap()
+                }
+                Err(e) => {
+                    eprintln!("l0ttie: failed to create processor `{e:?}'");
+                    self.processor = Some(Err(()));
+                    return;
+                }
+            },
+        };
 
-        if let Err(err) = self.render(time * self.time_scale) {
-            eprintln!("Failed to render: {err:?}");
+        if let Err(e) = processor.render(time * self.time_scale, outframe) {
+            eprintln!("l0ttie: failed to render frame: {e:?}");
+            self.processor = Some(Err(()));
         }
     }
 }
 
 impl L0ttiePlugin {
-    fn initialize(&mut self) -> anyhow::Result<()> {
+    fn initialize(&mut self) -> anyhow::Result<RenderProcessor> {
         let animation_path = self
             .animation_path
             .to_str()
@@ -153,7 +153,15 @@ impl L0ttiePlugin {
             })?
         };
 
-        Ok(())
+        RenderProcessor::new(
+            animation_data,
+            self.width as u32,
+            self.height as u32,
+            self.layout.clone(),
+            self.mode,
+            self.loop_animation,
+            self.background_color,
+        )
     }
 }
 

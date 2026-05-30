@@ -12,13 +12,12 @@ pub struct Backend {
     height: u32,
     renderer: dotlottie_rs::TvgRenderer,
     animation: dotlottie_rs::TvgAnimation,
-    background_shape: Option<dotlottie_rs::TvgShape>,
+    _background_shape: Option<dotlottie_rs::TvgShape>,
 }
 
 impl Backend {
-    fn new(
-        &mut self,
-        animation_data: &str,
+    pub fn new(
+        animation_data: String,
         width: u32,
         height: u32,
         layout: dotlottie_rs::Layout,
@@ -29,8 +28,8 @@ impl Backend {
         let mut renderer = dotlottie_rs::TvgRenderer::new(dotlottie_rs::TvgEngine::TvgEngineSw, 0);
         let mut animation = dotlottie_rs::TvgAnimation::default();
         animation
-            .load_data(animation_data, "lottie", true)
-            .with_context(|| format!("Failed to load lottie animation"))?;
+            .load_data(&animation_data, "lottie", true)
+            .with_context(|| "Failed to load lottie animation")?;
         let background_shape = if let Some(background_color) = background_color {
             let mut background_shape = dotlottie_rs::TvgShape::default();
             background_shape
@@ -52,7 +51,7 @@ impl Backend {
             None
         };
         renderer
-            .push(Drawable::Animation(&self.animation))
+            .push(Drawable::Animation(&animation))
             .context("Failed to add animation")?;
 
         let (animation_width, animation_height) = animation.get_size()?;
@@ -72,11 +71,11 @@ impl Backend {
             height,
             renderer,
             animation,
-            background_shape,
+            _background_shape: background_shape,
         })
     }
 
-    fn render(&mut self, time: f64, outframe: &mut [u32]) -> anyhow::Result<()> {
+    pub fn render(&mut self, time: f64, outframe: &mut [u32]) -> anyhow::Result<()> {
         if let Err(err) = self.renderer.set_target(
             outframe,
             self.width,
