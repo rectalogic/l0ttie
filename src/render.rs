@@ -14,7 +14,7 @@ impl RenderJob {
     fn new(time: f64, output: &mut [u32]) -> Self {
         Self {
             time,
-            output: (output.as_mut_ptr(), size_of_val(output)),
+            output: (output.as_mut_ptr(), output.len()),
         }
     }
 }

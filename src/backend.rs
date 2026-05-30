@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::mode::Mode;
-use anyhow::{Context, anyhow};
+use anyhow::Context;
 use dotlottie_rs::{Animation, ColorSpace, Drawable, Renderer, Shape};
 
 pub struct Backend {
@@ -29,7 +29,7 @@ impl Backend {
         let mut animation = dotlottie_rs::TvgAnimation::default();
         animation
             .load_data(&animation_data, "lottie", true)
-            .with_context(|| "Failed to load lottie animation")?;
+            .context("Failed to load lottie animation")?;
         let background_shape = if let Some(background_color) = background_color {
             let mut background_shape = dotlottie_rs::TvgShape::default();
             background_shape
@@ -54,15 +54,17 @@ impl Backend {
             .push(Drawable::Animation(&animation))
             .context("Failed to add animation")?;
 
-        let (animation_width, animation_height) = animation.get_size()?;
-        let (sx, sy, tx, ty) = layout.compute_layout_transform(
-            width as f32,
-            height as f32,
-            animation_width,
-            animation_height,
-        );
-        animation.set_size(sx, sy)?;
-        animation.translate(tx, ty)?;
+        if layout.fit != dotlottie_rs::Fit::Contain {
+            let (animation_width, animation_height) = animation.get_size()?;
+            let (sx, sy, tx, ty) = layout.compute_layout_transform(
+                width as f32,
+                height as f32,
+                animation_width,
+                animation_height,
+            );
+            animation.set_size(sx, sy)?;
+            animation.translate(tx, ty)?;
+        }
 
         Ok(Self {
             mode,
@@ -76,15 +78,15 @@ impl Backend {
     }
 
     pub fn render(&mut self, time: f64, outframe: &mut [u32]) -> anyhow::Result<()> {
-        if let Err(err) = self.renderer.set_target(
-            outframe,
-            self.width,
-            self.width,
-            self.height,
-            ColorSpace::ABGR8888,
-        ) {
-            return Err(anyhow!("Failed to set render target: {err:?}"));
-        }
+        self.renderer
+            .set_target(
+                outframe,
+                self.width,
+                self.width,
+                self.height,
+                ColorSpace::ABGR8888,
+            )
+            .context("Failed to set render target")?;
 
         let duration = self
             .animation
@@ -105,9 +107,9 @@ impl Backend {
 
         // Ignore errors, fails if we set the same frame
         let _ = self.animation.set_frame(frame_number);
-        self.renderer.update()?;
-        self.renderer.draw(true)?;
-        self.renderer.sync()?;
+        self.renderer.update().context("Render update failed")?;
+        self.renderer.draw(true).context("Render draw failed")?;
+        self.renderer.sync().context("Render sync failed")?;
 
         Ok(())
     }
