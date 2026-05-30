@@ -39,3 +39,10 @@ FREI0R_PATH=frei0r-plugin/ melt \
   frei0r.l0ttie 0=https://lottie.host/b5100a40-ab25-4a1e-8ac4-88b63f3f1018/Nd2wTOGBRS.json out=60 \
   -mix 60 -mixer affine scale_x=2 scale_y=2 halign=right valign=bottom
 ```
+
+## Build
+
+```sh-session
+$ cargo build
+$ cargo xtask package
+```

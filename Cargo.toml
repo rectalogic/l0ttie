@@ -1,16 +1,25 @@
+[workspace]
+members = ["xtask"]
+
+[workspace.package]
+edition = "2024"
+license = "GPL-3.0-or-later"
+
 [package]
 name = "l0ttie"
-license = "GPL-3.0-or-later"
+edition.workspace = true
+license.workspace = true
 version = "0.2.0"
-edition = "2024"
-build = "build.rs"
 
 [lib]
 crate-type = ["cdylib"]
 
+[workspace.dependencies]
+anyhow = "1.0.101"
+
 [dependencies]
 frei0r-rs2 = { git = "https://github.com/rectalogic/frei0r-rs.git", tag = "3.0.0" }
-anyhow = "1.0.98"
+anyhow = { workspace = true }
 dotlottie-rs = { git = "https://github.com/LottieFiles/dotlottie-rs.git", tag = "v0.1.44", features = [
     "thorvg-v0",
 ] }

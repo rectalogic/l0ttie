@@ -33,29 +33,28 @@ jobs:
       - name: Build
         run: |
           cargo build --all-targets --release --verbose
+          cargo xtask package
       - name: Run tests
         run: cargo test --release --verbose
       - name: Install ffmpeg
-        run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            sudo apt install ffmpeg
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            brew install ffmpeg
-          elif [ "$RUNNER_OS" == "Windows" ]; then
-            choco install ffmpeg-full
-          else
-            exit 1
-          fi
+        if: ${{ runner.os == 'Linux' }}
         shell: bash
+        run: sudo apt install ffmpeg
+      - name: Install ffmpeg
+        if: ${{ runner.os == 'macOS' }}
+        shell: bash
+        run: |
+          brew install ffmpeg-full
+          echo "$(brew --prefix)/opt/ffmpeg-full/bin" >> $GITHUB_PATH
+      - name: Install ffmpeg
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: choco install ffmpeg-full
       - name: Run examples
         env:
           FREI0R_PATH: ${{ github.workspace }}/target/release
         shell: bash
         run: |
-          # ffmpeg uses incorrect frei0r suffix on macOS
-          if [ "$RUNNER_OS" == "macOS" ]; then
-            ln -s l0ttie.so target/release/l0ttie.dylib
-          fi
           mkdir output
           ffmpeg -f lavfi -i 'testsrc=size=640x360:rate=5:decimals=2' -f lavfi -i "frei0r_src=size=640x360:framerate=5:filter_name=l0ttie:filter_params=.github/workflows/fixtures/emoji.json|0.001" -filter_complex overlay -t 10.96 -y output/overlay.mp4
           ffmpeg -f lavfi -i "frei0r_src=size=640x360:framerate=5:filter_name=l0ttie:filter_params=.github/workflows/fixtures/emoji.json|0.001|reverse|n|contain|0/0/1" -t 10.96 -y output/background_reverse.mp4

@@ -36,12 +36,10 @@ jobs:
         shell: bash
         run: |
           cargo build --all-targets --release --verbose
-          # ffmpeg on macOS incorrectly expects .dylib not .so
-          if [ "$RUNNER_OS" == "macOS" ]; then
-            ln -s l0ttie.so target/release/l0ttie.dylib
-          fi
+          mkdir target/package
+          cargo xtask package target/package
           shopt -s extglob
-          cd target/release/
+          cd target/package
           tar -czvf ../../l0ttie-${{ runner.os }}.tar.gz l0ttie.${{ runner.os == 'Windows' && 'dll' || '@(so|dylib)' }}
       - name: Get crate version
         id: version
