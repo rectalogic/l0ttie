@@ -57,17 +57,15 @@ impl Backend {
             .push(Drawable::Animation(&animation))
             .context("Failed to add animation")?;
 
-        if layout.fit != dotlottie_rs::Fit::Contain {
-            let (animation_width, animation_height) = animation.get_size()?;
-            let (sx, sy, tx, ty) = layout.compute_layout_transform(
-                width as f32,
-                height as f32,
-                animation_width,
-                animation_height,
-            );
-            animation.set_size(sx, sy)?;
-            animation.translate(tx, ty)?;
-        }
+        let (animation_width, animation_height) = animation.get_size()?;
+        let (sx, sy, tx, ty) = layout.compute_layout_transform(
+            width as f32,
+            height as f32,
+            animation_width,
+            animation_height,
+        );
+        animation.set_size(sx, sy)?;
+        animation.translate(tx, ty)?;
 
         renderer.sync().context("Canvas sync failed")?;
 
