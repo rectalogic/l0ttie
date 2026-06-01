@@ -30,26 +30,29 @@ impl Backend {
         animation
             .load_data(&animation_data, "lottie", true)
             .context("Failed to load lottie animation")?;
-        let background_shape = if let Some(background_color) = background_color {
-            let mut background_shape = dotlottie_rs::TvgShape::default();
-            background_shape
-                .append_rect(0.0, 0.0, width as f32, height as f32, 0.0, 0.0)
-                .context("Failed to construct background shape")?;
-            background_shape
-                .fill((
-                    (background_color.r * 255.0) as u8,
-                    (background_color.g * 255.0) as u8,
-                    (background_color.b * 255.0) as u8,
-                    255,
-                ))
-                .context("Failed to fill background shape")?;
-            renderer
-                .push(Drawable::Shape(&background_shape))
-                .context("Failed to add background shape")?;
-            Some(background_shape)
-        } else {
-            None
-        };
+        let background_shape = background_color
+            .map(
+                |background_color| -> anyhow::Result<dotlottie_rs::TvgShape> {
+                    let mut background_shape = dotlottie_rs::TvgShape::default();
+                    background_shape
+                        .append_rect(0.0, 0.0, width as f32, height as f32, 0.0, 0.0)
+                        .context("Failed to construct background shape")?;
+                    background_shape
+                        .fill((
+                            (background_color.r * 255.0) as u8,
+                            (background_color.g * 255.0) as u8,
+                            (background_color.b * 255.0) as u8,
+                            255,
+                        ))
+                        .context("Failed to fill background shape")?;
+                    renderer
+                        .push(Drawable::Shape(&background_shape))
+                        .context("Failed to add background shape")?;
+                    Ok(background_shape)
+                },
+            )
+            .transpose()?;
+
         renderer
             .push(Drawable::Animation(&animation))
             .context("Failed to add animation")?;

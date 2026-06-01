@@ -28,14 +28,15 @@ package [output-dir]       package built plugins for frei0r
 fn package(mut args: Args) -> anyhow::Result<()> {
     let target_dir =
         PathBuf::from(env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into()));
-    let output_dir = if let Some(output) = args.next() {
-        let output = PathBuf::from(output);
-        fs::create_dir_all(&output)
-            .with_context(|| format!("Failed to create directory '{}'", output.display()))?;
-        Some(output)
-    } else {
-        None
-    };
+    let output_dir = args
+        .next()
+        .map(|output| -> anyhow::Result<PathBuf> {
+            let output = PathBuf::from(output);
+            fs::create_dir_all(&output)
+                .with_context(|| format!("Failed to create directory '{}'", output.display()))?;
+            Ok(output)
+        })
+        .transpose()?;
     let pattern = match env::consts::OS {
         "macos" => target_dir.join("*/libl0ttie.dylib"),
         "linux" => target_dir.join("*/libl0ttie.so"),
