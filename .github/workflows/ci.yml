@@ -13,7 +13,7 @@ jobs:
         platform: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Rustup
         run: |
           rustup update stable
@@ -58,7 +58,7 @@ jobs:
           diff-video-path: output/diff
           video-threshold: 96.9
       - name: Upload videos
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: videos-${{ runner.os }}
