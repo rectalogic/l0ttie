@@ -66,6 +66,8 @@ impl Backend {
             animation.translate(tx, ty)?;
         }
 
+        renderer.sync().context("Canvas sync failed")?;
+
         Ok(Self {
             mode,
             loop_animation,
