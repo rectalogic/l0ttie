@@ -10,6 +10,7 @@ use std::{
 };
 
 use anyhow::Context;
+use dotlottie_rs::Layout;
 use ureq::http::Uri;
 
 use crate::{backend::Backend, processor::Processor};
@@ -20,7 +21,7 @@ pub struct L0ttiePlugin {
     animation_path: CString,
     mode: mode::Mode,
     loop_animation: bool,
-    layout: dotlottie_rs::Layout,
+    layout: Layout,
     time_scale: f64,
     background_color: Option<frei0r_rs2::Color>,
     width: usize,
@@ -97,7 +98,7 @@ impl frei0r_rs2::Plugin<0> for L0ttiePlugin {
             mode: mode::Mode::Forward,
             loop_animation: false,
             time_scale: 1.0,
-            layout: dotlottie_rs::Layout::new(dotlottie_rs::Fit::Contain, vec![0.5, 0.5]),
+            layout: Layout::default(),
             background_color: None,
             processor: None,
         }
@@ -174,10 +175,11 @@ impl L0ttiePlugin {
                 format!("Failed to read lottie animation path: {animation_path}")
             })?
         };
+        let animation_data = CString::new(animation_data)?;
 
         let width = self.width as u32;
         let height = self.height as u32;
-        let layout = self.layout.clone();
+        let layout = self.layout;
         let mode = self.mode;
         let loop_animation = self.loop_animation;
         let background_color = self.background_color;
@@ -187,7 +189,7 @@ impl L0ttiePlugin {
                     animation_data,
                     width,
                     height,
-                    layout.clone(),
+                    layout,
                     mode,
                     loop_animation,
                     background_color,
