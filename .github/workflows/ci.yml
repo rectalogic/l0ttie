@@ -39,7 +39,7 @@ jobs:
       - name: Install ffmpeg
         if: ${{ runner.os == 'Linux' }}
         shell: bash
-        run: sudo apt install ffmpeg
+        run: sudo apt update && sudo apt install ffmpeg
       - name: Install ffmpeg
         if: ${{ runner.os == 'macOS' }}
         shell: bash

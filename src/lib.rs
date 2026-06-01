@@ -4,13 +4,17 @@ mod backend;
 mod fit;
 mod mode;
 mod processor;
-mod render;
-use std::ffi::CString;
+use std::{
+    ffi::CString,
+    sync::mpsc::{Receiver, Sender},
+};
 
 use anyhow::Context;
 use ureq::http::Uri;
 
-use crate::render::RenderProcessor;
+use crate::{backend::Backend, processor::Processor};
+
+type RenderProcessor = Processor<RenderJob, anyhow::Result<()>>;
 
 pub struct L0ttiePlugin {
     animation_path: CString,
@@ -116,9 +120,27 @@ impl frei0r_rs2::Plugin<0> for L0ttiePlugin {
             },
         };
 
-        if let Err(e) = processor.render(time * self.time_scale, outframe) {
+        let job = RenderJob::new(time * self.time_scale, outframe);
+        if let Err(e) = processor.process(job) {
             eprintln!("l0ttie: failed to render frame: {e:?}");
             self.processor = Some(Err(()));
+        }
+    }
+}
+
+struct RenderJob {
+    time: f64,
+    output: (*mut u32, usize),
+}
+
+// SAFETY: The caller guarantees input references remain valid until channel signals completion
+unsafe impl Send for RenderJob {}
+
+impl RenderJob {
+    fn new(time: f64, output: &mut [u32]) -> Self {
+        Self {
+            time,
+            output: (output.as_mut_ptr(), output.len()),
         }
     }
 }
@@ -153,15 +175,32 @@ impl L0ttiePlugin {
             })?
         };
 
-        RenderProcessor::new(
-            animation_data,
-            self.width as u32,
-            self.height as u32,
-            self.layout.clone(),
-            self.mode,
-            self.loop_animation,
-            self.background_color,
-        )
+        let width = self.width as u32;
+        let height = self.height as u32;
+        let layout = self.layout.clone();
+        let mode = self.mode;
+        let loop_animation = self.loop_animation;
+        let background_color = self.background_color;
+        let processor = Processor::new(
+            move |rx: Receiver<RenderJob>, tx: Sender<anyhow::Result<()>>| {
+                let mut backend_renderer = Backend::new(
+                    animation_data,
+                    width,
+                    height,
+                    layout.clone(),
+                    mode,
+                    loop_animation,
+                    background_color,
+                )?;
+                for job in rx {
+                    let output =
+                        unsafe { std::slice::from_raw_parts_mut(job.output.0, job.output.1) };
+                    tx.send(backend_renderer.render(job.time, output))?;
+                }
+                Ok(())
+            },
+        )?;
+        Ok(processor)
     }
 }
 
