@@ -8,6 +8,7 @@ use anyhow::Context;
 use dotlottie_rs::{ColorSpace, Layout, LottieRenderer, Rgba, TvgRenderer};
 
 pub struct Backend {
+    animation_data: Option<CString>,
     mode: Mode,
     _layout: Layout,
     loop_animation: bool,
@@ -26,12 +27,7 @@ impl Backend {
         loop_animation: bool,
         background_color: Option<frei0r_rs2::Color>,
     ) -> anyhow::Result<Self> {
-        let mut data = vec![0u32; (width * height) as usize];
         let mut renderer = <dyn LottieRenderer>::new(TvgRenderer::new(0));
-        // Safety: set_sw_target should be unsafe. It holds a *mut ptr, but we reset on each render.
-        renderer
-            .set_sw_target(data.as_mut(), width, width, height, ColorSpace::ABGR8888)
-            .context("Failed to initialize render target")?;
         if let Some(background_color) = background_color {
             renderer.set_background(Rgba::new(
                 (background_color.r * 255.0) as u8,
@@ -41,11 +37,9 @@ impl Backend {
             ))?;
         }
         renderer.set_layout(&layout)?;
-        renderer
-            .load_data(&animation_data)
-            .context("Failed to load lottie animation")?;
 
         Ok(Self {
+            animation_data: Some(animation_data),
             mode,
             _layout: layout,
             loop_animation,
@@ -66,6 +60,12 @@ impl Backend {
                 ColorSpace::ABGR8888,
             )
             .context("Failed to set render target")?;
+
+        if let Some(animation_data) = self.animation_data.take() {
+            self.renderer
+                .load_data(&animation_data)
+                .context("Failed to load lottie animation")?;
+        }
 
         let duration = self
             .renderer
