@@ -9,7 +9,7 @@ use std::{
 
 pub struct Processor<J, R> {
     rx: Receiver<R>,
-    tx: Sender<J>,
+    tx: Option<Sender<J>>,
     thread: Option<JoinHandle<anyhow::Result<()>>>,
 }
 
@@ -26,7 +26,7 @@ where
         let (txr, rxr) = channel();
         Ok(Self {
             rx: rxr,
-            tx: txj,
+            tx: Some(txj),
             thread: Some(
                 thread::Builder::new()
                     .name("L0ttie Renderer".into())
@@ -36,8 +36,12 @@ where
     }
 
     pub fn process(&mut self, job: J) -> anyhow::Result<R> {
-        self.tx.send(job).map_err(|_| self.join_error())?;
-        self.rx.recv().map_err(|_| self.join_error())
+        if let Some(ref tx) = self.tx {
+            tx.send(job).map_err(|_| self.join_error())?;
+            self.rx.recv().map_err(|_| self.join_error())
+        } else {
+            Err(anyhow::anyhow!("Unable to send to processor"))
+        }
     }
 
     fn join_error(&mut self) -> anyhow::Error {
@@ -48,6 +52,17 @@ where
                 Err(payload) => panic_error(payload),
             },
             None => anyhow::anyhow!("Failed to process render"),
+        }
+    }
+}
+
+impl<J, R> Drop for Processor<J, R> {
+    fn drop(&mut self) {
+        if let Some(tx) = self.tx.take()
+            && let Some(thread) = self.thread.take()
+        {
+            drop(tx);
+            let _ = thread.join();
         }
     }
 }
