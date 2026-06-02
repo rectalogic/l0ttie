@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 name = "l0ttie"
 edition.workspace = true
 license.workspace = true
-version = "0.2.0"
+version = "0.3.0"
 
 [lib]
 crate-type = ["cdylib"]
