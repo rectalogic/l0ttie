@@ -3,7 +3,7 @@
 mod backend;
 mod fit;
 mod mode;
-mod processor;
+
 use std::{
     ffi::CString,
     sync::mpsc::{Receiver, Sender},
@@ -11,11 +11,12 @@ use std::{
 
 use anyhow::Context;
 use dotlottie_rs::Layout;
+use job_processor::JobProcessor;
 use ureq::http::Uri;
 
-use crate::{backend::Backend, processor::Processor};
+use crate::backend::Backend;
 
-type RenderProcessor = Processor<RenderJob, anyhow::Result<()>>;
+type RenderProcessor = JobProcessor<RenderJob, anyhow::Result<()>>;
 
 pub struct L0ttiePlugin {
     animation_path: CString,
@@ -183,7 +184,8 @@ impl L0ttiePlugin {
         let mode = self.mode;
         let loop_animation = self.loop_animation;
         let background_color = self.background_color;
-        let processor = Processor::new(
+        let processor = JobProcessor::new(
+            "L0ttie Render".into(),
             move |rx: Receiver<RenderJob>, tx: Sender<anyhow::Result<()>>| {
                 let mut backend_renderer = Backend::new(
                     animation_data,
