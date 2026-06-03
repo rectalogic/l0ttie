@@ -16,7 +16,7 @@ use ureq::http::Uri;
 
 use crate::backend::Backend;
 
-type RenderProcessor = JobProcessor<RenderJob, anyhow::Result<()>>;
+type RenderProcessor = JobProcessor<RenderJob, anyhow::Result<()>, anyhow::Error>;
 
 pub struct L0ttiePlugin {
     animation_path: CString,
