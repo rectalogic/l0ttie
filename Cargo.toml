@@ -37,4 +37,4 @@ dotlottie-rs = { git = "https://github.com/LottieFiles/dotlottie-rs.git", tag = 
     "tvg-ttf",
 ] }
 ureq = "3.0.12"
-job_processor = { git = "https://github.com/rectalogic/job_processor.git", tag = "0.2.0" }
+job_processor = { git = "https://github.com/rectalogic/job_processor.git", tag = "0.3.0" }

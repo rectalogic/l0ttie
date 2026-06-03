@@ -829,8 +829,8 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
 name = "job_processor"
-version = "0.2.0"
-source = "git+https://github.com/rectalogic/job_processor.git?tag=0.2.0#a20da7909a37081d8705999d96070ead92da91eb"
+version = "0.3.0"
+source = "git+https://github.com/rectalogic/job_processor.git?tag=0.3.0#d02ebe0c108a7d4e2e447cac36924d9844a2147c"
 dependencies = [
  "anyhow",
  "thiserror",

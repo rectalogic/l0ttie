@@ -4,19 +4,16 @@ mod backend;
 mod fit;
 mod mode;
 
-use std::{
-    ffi::CString,
-    sync::mpsc::{Receiver, Sender},
-};
+use std::ffi::CString;
 
 use anyhow::Context;
 use dotlottie_rs::Layout;
-use job_processor::JobProcessor;
+use job_processor::{JobHandler, JobProcessor};
 use ureq::http::Uri;
 
 use crate::backend::Backend;
 
-type RenderProcessor = JobProcessor<RenderJob, anyhow::Result<()>, anyhow::Error>;
+type RenderProcessor = JobProcessor<RenderJob, (), anyhow::Error>;
 
 pub struct L0ttiePlugin {
     animation_path: CString,
@@ -184,27 +181,25 @@ impl L0ttiePlugin {
         let mode = self.mode;
         let loop_animation = self.loop_animation;
         let background_color = self.background_color;
-        let processor = JobProcessor::new(
-            "L0ttie Render".into(),
-            move |rx: Receiver<RenderJob>, tx: Sender<anyhow::Result<()>>| {
-                let mut backend_renderer = Backend::new(
-                    animation_data,
-                    width,
-                    height,
-                    layout,
-                    mode,
-                    loop_animation,
-                    background_color,
-                )?;
-                for job in rx {
-                    let output =
-                        unsafe { std::slice::from_raw_parts_mut(job.output.0, job.output.1) };
-                    tx.send(backend_renderer.render(job.time, output))?;
-                }
-                Ok(())
-            },
-        )?;
+        let processor = JobProcessor::new("L0ttie Render", move || {
+            Backend::new(
+                animation_data,
+                width,
+                height,
+                layout,
+                mode,
+                loop_animation,
+                background_color,
+            )
+        })?;
         Ok(processor)
+    }
+}
+
+impl JobHandler<RenderJob, (), anyhow::Error> for Backend {
+    fn handle(&mut self, job: RenderJob) -> Result<(), anyhow::Error> {
+        let output = unsafe { std::slice::from_raw_parts_mut(job.output.0, job.output.1) };
+        self.render(job.time, output)
     }
 }
 
